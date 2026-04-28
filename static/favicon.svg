@@ -1,5 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Clearance favicon">
-  <rect width="64" height="64" rx="14" fill="#12121c"/>
-  <rect x="10" y="10" width="44" height="44" rx="10" fill="#f59e0b"/>
-  <path d="M23 33.5l6 6L42 25.5" fill="none" stroke="#12121c" stroke-linecap="round" stroke-linejoin="round" stroke-width="6"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none" role="img" aria-label="Clearance favicon">
+  <!-- Favicon-optimized chevron: tighter spacing, raised opacity on dim layers for tiny-size legibility -->
+  <path d="M 18 30 L 38 50 L 18 70" stroke="#E8912D" stroke-width="11" stroke-linecap="square" stroke-linejoin="miter" opacity="0.45" fill="none"/>
+  <path d="M 40 30 L 60 50 L 40 70" stroke="#E8912D" stroke-width="11" stroke-linecap="square" stroke-linejoin="miter" opacity="0.75" fill="none"/>
+  <path d="M 62 30 L 82 50 L 62 70" stroke="#E8912D" stroke-width="11" stroke-linecap="square" stroke-linejoin="miter" fill="none"/>
 </svg>

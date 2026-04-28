@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clearance — Logo Concepts</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg: #15151a;
+            --surface: #1f1f27;
+            --border: #2a2a33;
+            --border-2: #353541;
+            --amber: #E8912D;
+            --amber-bright: #f0a040;
+            --steel: #8A8A8A;
+            --text: #ececf0;
+            --text-dim: #b8b8c0;
+            --muted: #7a7a85;
+            --dim: #4a4a55;
+            --font-sans: 'Inter', -apple-system, system-ui, sans-serif;
+            --font-mono: 'JetBrains Mono', 'SF Mono', monospace;
+        }
+        body {
+            font-family: var(--font-sans);
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            padding: 40px 24px 80px;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .title-block { margin-bottom: 48px; padding-bottom: 24px; border-bottom: 1px solid var(--border); }
+        .title-eyebrow {
+            font-family: var(--font-mono);
+            font-size: 12px; color: var(--amber);
+            letter-spacing: 0.06em; margin-bottom: 8px;
+        }
+        h1 {
+            font-size: 36px; font-weight: 700; letter-spacing: -0.02em;
+            margin-bottom: 8px; color: #fafafd;
+        }
+        .subtitle { color: var(--text-dim); font-size: 15px; max-width: 620px; }
+        .legend {
+            display: flex; gap: 18px; margin-top: 18px; flex-wrap: wrap;
+            font-family: var(--font-mono); font-size: 11px; color: var(--muted);
+        }
+        .legend-key {
+            font-family: var(--font-mono); font-size: 12px;
+            color: var(--amber); font-weight: 600;
+        }
+
+        /* Concept card */
+        .concept {
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            background: var(--surface);
+            margin-bottom: 28px;
+            overflow: hidden;
+        }
+        .concept-head {
+            display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
+            padding: 22px 28px; border-bottom: 1px solid var(--border);
+            background: rgba(0,0,0,0.15);
+        }
+        .concept-num {
+            font-family: var(--font-mono);
+            font-size: 13px; color: var(--amber);
+            font-weight: 700;
+        }
+        .concept-name {
+            font-size: 22px; font-weight: 700;
+            letter-spacing: -0.01em; color: #fafafd;
+        }
+        .concept-tag {
+            font-family: var(--font-mono); font-size: 11px;
+            color: var(--muted); letter-spacing: 0.04em;
+        }
+        .concept-desc {
+            margin-left: auto; max-width: 420px;
+            font-size: 13px; color: var(--text-dim);
+        }
+
+        /* Display rows */
+        .display-row {
+            display: grid;
+            grid-template-columns: 140px 1fr;
+            gap: 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .display-row:last-child { border-bottom: none; }
+        .display-row-label {
+            padding: 24px 24px 24px 28px;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--muted);
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            border-right: 1px solid var(--border);
+            display: flex; align-items: center;
+        }
+        .display-row-content {
+            padding: 24px 28px;
+            display: flex; align-items: center; gap: 32px; flex-wrap: wrap;
+        }
+
+        /* Backgrounds */
+        .bg-dark { background: #15151a; }
+        .bg-charcoal { background: #2D2D2D; }
+        .bg-amber { background: var(--amber); }
+        .bg-light { background: #f5f5f0; }
+        .bg-pad {
+            padding: 18px 22px;
+            border-radius: 8px;
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            border: 1px solid var(--border-2);
+        }
+        .bg-pad.bg-light, .bg-pad.bg-amber { border-color: rgba(0,0,0,0.1); }
+
+        /* Logo size cells */
+        .logo-cell {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .logo-amber { color: var(--amber); }
+        .logo-text { color: var(--text); }
+        .logo-dark { color: #1a1a1f; }
+        .logo-light { color: #fafafd; }
+
+        /* Wordmark lockup */
+        .wordmark {
+            display: inline-flex; align-items: center; gap: 10px;
+        }
+        .wordmark-name {
+            font-family: var(--font-sans);
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: -0.01em;
+        }
+        .wordmark-name.mono {
+            font-family: var(--font-mono);
+            font-weight: 700;
+            font-size: 16px;
+            letter-spacing: 0.02em;
+        }
+
+        /* Size labels */
+        .size-stack {
+            display: flex; flex-direction: column; align-items: center; gap: 6px;
+        }
+        .size-label {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: var(--muted);
+        }
+
+        /* Verdict footer */
+        .verdict {
+            margin-top: 48px;
+            padding: 28px;
+            border: 1px solid var(--border-2);
+            border-radius: 14px;
+            background: var(--surface);
+            text-align: center;
+        }
+        .verdict h2 {
+            font-size: 20px; font-weight: 700; margin-bottom: 8px;
+            color: #fafafd; letter-spacing: -0.01em;
+        }
+        .verdict p {
+            color: var(--text-dim); font-size: 14px;
+        }
+        .verdict code {
+            font-family: var(--font-mono);
+            background: rgba(232, 145, 45, 0.12);
+            color: var(--amber);
+            padding: 2px 8px; border-radius: 4px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+
+<!-- Inline SVG symbols so currentColor works via CSS -->
+<svg width="0" height="0" style="position:absolute;" aria-hidden="true">
+    <defs>
+        <symbol id="logo-stamp" viewBox="0 0 100 100">
+            <path id="stamp-text-path" d="M 50,50 m -38,0 a 38,38 0 1,1 76,0 a 38,38 0 1,1 -76,0" fill="none"/>
+            <circle cx="50" cy="50" r="46" stroke="currentColor" stroke-width="2.5" fill="none"/>
+            <circle cx="50" cy="50" r="36" stroke="currentColor" stroke-width="1" fill="none" opacity="0.5"/>
+            <text font-family="'JetBrains Mono', monospace" font-size="6.5" font-weight="700" fill="currentColor" letter-spacing="1.5">
+                <textPath href="#stamp-text-path" startOffset="0%">CLEARANCE · AUTHORIZED · v1 · CLEARANCE · AUTHORIZED · v1 ·</textPath>
+            </text>
+            <path d="M 30 52 L 44 66 L 70 38" stroke="currentColor" stroke-width="6" stroke-linecap="square" stroke-linejoin="miter" fill="none"/>
+            <line x1="50" y1="6" x2="50" y2="10" stroke="currentColor" stroke-width="1.5"/>
+            <line x1="50" y1="90" x2="50" y2="94" stroke="currentColor" stroke-width="1.5"/>
+            <line x1="6" y1="50" x2="10" y2="50" stroke="currentColor" stroke-width="1.5"/>
+            <line x1="90" y1="50" x2="94" y2="50" stroke="currentColor" stroke-width="1.5"/>
+        </symbol>
+
+        <symbol id="logo-gate" viewBox="0 0 100 100">
+            <path d="M 8 50 L 42 14 L 42 86 Z" fill="currentColor"/>
+            <path d="M 92 50 L 58 14 L 58 86 Z" fill="currentColor"/>
+            <circle cx="50" cy="34" r="2" fill="currentColor" opacity="0.4"/>
+            <circle cx="50" cy="50" r="2.5" fill="currentColor"/>
+            <circle cx="50" cy="66" r="2" fill="currentColor" opacity="0.4"/>
+            <line x1="42" y1="14" x2="58" y2="14" stroke="currentColor" stroke-width="1" opacity="0.3"/>
+            <line x1="42" y1="86" x2="58" y2="86" stroke="currentColor" stroke-width="1" opacity="0.3"/>
+        </symbol>
+
+        <symbol id="logo-chevron" viewBox="0 0 100 100">
+            <path d="M 18 30 L 38 50 L 18 70" stroke="currentColor" stroke-width="9" stroke-linecap="square" stroke-linejoin="miter" opacity="0.32" fill="none"/>
+            <path d="M 40 30 L 60 50 L 40 70" stroke="currentColor" stroke-width="9" stroke-linecap="square" stroke-linejoin="miter" opacity="0.62" fill="none"/>
+            <path d="M 62 30 L 82 50 L 62 70" stroke="currentColor" stroke-width="9" stroke-linecap="square" stroke-linejoin="miter" fill="none"/>
+        </symbol>
+
+        <symbol id="logo-monogram" viewBox="0 0 100 100">
+            <path d="M 12 18 L 6 18 L 6 82 L 12 82" stroke="currentColor" stroke-width="3" stroke-linecap="square" fill="none"/>
+            <path d="M 88 18 L 94 18 L 94 82 L 88 82" stroke="currentColor" stroke-width="3" stroke-linecap="square" fill="none"/>
+            <text x="50" y="62" font-family="'JetBrains Mono', 'SF Mono', monospace" font-size="32" font-weight="800" fill="currentColor" text-anchor="middle" letter-spacing="-1">CLR</text>
+            <line x1="22" y1="74" x2="78" y2="74" stroke="currentColor" stroke-width="2.5"/>
+            <circle cx="22" cy="28" r="2" fill="currentColor"/>
+        </symbol>
+    </defs>
+</svg>
+
+<div class="container">
+
+    <div class="title-block">
+        <div class="title-eyebrow">// logo concepts · v1</div>
+        <h1>Clearance — pick a mark.</h1>
+        <p class="subtitle">Four directions. Each shown at the sizes and contexts that matter — favicon (16px), nav (32px), hero (64px), bigboard (128px) — across dark, charcoal, amber, and light backgrounds. Plus wordmark lockups.</p>
+        <div class="legend">
+            <span class="legend-key">▸</span> Color: amber #E8912D (Blacksmith primary)
+            <span class="legend-key">▸</span> Falls back gracefully to mono on any bg
+            <span class="legend-key">▸</span> All built as scalable SVG, no raster
+        </div>
+    </div>
+
+    <!-- ============ STAMP ============ -->
+    <div class="concept">
+        <div class="concept-head">
+            <span class="concept-num">01</span>
+            <span class="concept-name">STAMP</span>
+            <span class="concept-tag">// the authorization seal</span>
+            <span class="concept-desc">Notary / customs stamp aesthetic. Curved mono text on the ring. Bold architectural check inside. The most direct fit for "this thing was officially cleared."</span>
+        </div>
+        <div class="display-row">
+            <div class="display-row-label">Sizes · dark</div>
+            <div class="display-row-content">
+                <div class="bg-pad bg-dark">
+                    <div class="size-stack"><svg width="16" height="16" class="logo-amber"><use href="#logo-stamp"/></svg><span class="size-label">16</span></div>
+                    <div class="size-stack"><svg width="32" height="32" class="logo-amber"><use href="#logo-stamp"/></svg><span class="size-label">32</span></div>
+                    <div class="size-stack"><svg width="64" height="64" class="logo-amber"><use href="#logo-stamp"/></svg><span class="size-label">64</span></div>
+                    <div class="size-stack"><svg width="128" height="128" class="logo-amber"><use href="#logo-stamp"/></svg><span class="size-label">128</span></div>
+                </div>
+            </div>
+        </div>
+        <div class="display-row">
+            <div class="display-row-label">On color</div>
+            <div class="display-row-content">
+                <div class="bg-pad bg-charcoal"><svg width="48" height="48" class="logo-amber"><use href="#logo-stamp"/></svg></div>
+                <div class="bg-pad bg-amber"><svg width="48" height="48" class="logo-dark"><use href="#logo-stamp"/></svg></div>
+                <div class="bg-pad bg-light"><svg width="48" height="48" class="logo-dark"><use href="#logo-stamp"/></svg></div>
+            </div>
+        </div>
+        <div class="display-row">
+            <div class="display-row-label">Lockup</div>
+            <div class="display-row-content">
+                <div class="bg-pad bg-dark">
+                    <div class="wordmark">
+                        <svg width="32" height="32" class="logo-amber"><use href="#logo-stamp"/></svg>
+                        <span class="wordmark-name">Clearance</span>
+                    </div>
+                </div>
+                <div class="bg-pad bg-dark">
+                    <div class="wordmark">
+                        <svg width="32" height="32" class="logo-amber"><use href="#logo-stamp"/></svg>
+                        <span class="wordmark-name mono">CLEARANCE</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ GATE ============ -->
+    <div class="concept">
+        <div class="concept-head">
+            <span class="concept-num">02</span>
+            <span class="concept-name">GATE</span>
+            <span class="concept-tag">// the diamond passage</span>
+            <span class="concept-desc">Two diamond halves with a vertical gap — visualizing the moment of clearance, the passage between intent and execution. On-brand with Nauti-Labs V4 diamond DNA.</span>
+        </div>
+        <div class="display-row">
+            <div class="display-row-label">Sizes · dark</div>
+            <div class="display-row-content">
+                <div class="bg-pad bg-dark">
+                    <div class="size-stack"><svg width="16" height="16" class="logo-amber"><use href="#logo-gate"/></svg><span class="size-label">16</span></div>
+                    <div class="size-stack"><svg width="32" height="32" class="logo-amber"><use href="#logo-gate"/></svg><span class="size-label">32</span></div>
+                    <div class="size-stack"><svg width="64" height="64" class="logo-amber"><use href="#logo-gate"/></svg><span class="size-label">64</span></div>
+                    <div class="size-stack"><svg width="128" height="128" class="logo-amber"><use href="#logo-gate"/></svg><span class="size-label">128</span></div>
+                </div>
+            </div>
+        </div>
+        <div class="display-row">
+            <div class="display-row-label">On color</div>
+            <div class="display-row-content">
+                <div class="bg-pad bg-charcoal"><svg width="48" height="48" class="logo-amber"><use href="#logo-gate"/></svg></div>
+                <div class="bg-pad bg-amber"><svg width="48" height="48" class="logo-dark"><use href="#logo-gate"/></svg></div>
+                <div class="bg-pad bg-light"><svg width="48" height="48" class="logo-dark"><use href="#logo-gate"/></svg></div>
+            </div>
+        </div>
+        <div class="display-row">
+            <div class="display-row-label">Lockup</div>
+            <div class="display-row-content">
+                <div class="bg-pad bg-dark">
+                    <div class="wordmark">
+                        <svg width="32" height="32" class="logo-amber"><use href="#logo-gate"/></svg>
+                        <span class="wordmark-name">Clearance</span>
+                    </div>
+                </div>
+                <div class="bg-pad bg-dark">
+                    <div class="wordmark">
+                        <svg width="32" height="32" class="logo-amber"><use href="#logo-gate"/></svg>
+                        <span class="wordmark-name mono">CLEARANCE</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ CHEVRON ============ -->
+    <div class="concept">
+        <div class="concept-head">
+            <span class="concept-num">03</span>
+            <span class="concept-name">CHEVRON</span>
+            <span class="concept-tag">// the three-tier pass</span>
+            <span class="concept-desc">Three stacked chevrons — fading bottom to bright top — representing agent → human → service. Most minimal. Scales tiny without losing identity.</span>
+        </div>
+        <div class="display-row">
+            <div class="display-row-label">Sizes · dark</div>
+            <div class="display-row-content">
+                <div class="bg-pad bg-dark">
+                    <div class="size-stack"><svg width="16" height="16" class="logo-amber"><use href="#logo-chevron"/></svg><span class="size-label">16</span></div>
+                    <div class="size-stack"><svg width="32" height="32" class="logo-amber"><use href="#logo-chevron"/></svg><span class="size-label">32</span></div>
+                    <div class="size-stack"><svg width="64" height="64" class="logo-amber"><use href="#logo-chevron"/></svg><span class="size-label">64</span></div>
+                    <div class="size-stack"><svg width="128" height="128" class="logo-amber"><use href="#logo-chevron"/></svg><span class="size-label">128</span></div>
+                </div>
+            </div>
+        </div>
+        <div class="display-row">
+            <div class="display-row-label">On color</div>
+            <div class="display-row-content">
+                <div class="bg-pad bg-charcoal"><svg width="48" height="48" class="logo-amber"><use href="#logo-chevron"/></svg></div>
+                <div class="bg-pad bg-amber"><svg width="48" height="48" class="logo-dark"><use href="#logo-chevron"/></svg></div>
+                <div class="bg-pad bg-light"><svg width="48" height="48" class="logo-dark"><use href="#logo-chevron"/></svg></div>
+            </div>
+        </div>
+        <div class="display-row">
+            <div class="display-row-label">Lockup</div>
+            <div class="display-row-content">
+                <div class="bg-pad bg-dark">
+                    <div class="wordmark">
+                        <svg width="32" height="32" class="logo-amber"><use href="#logo-chevron"/></svg>
+                        <span class="wordmark-name">Clearance</span>
+                    </div>
+                </div>
+                <div class="bg-pad bg-dark">
+                    <div class="wordmark">
+                        <svg width="32" height="32" class="logo-amber"><use href="#logo-chevron"/></svg>
+                        <span class="wordmark-name mono">CLEARANCE</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ MONOGRAM ============ -->
+    <div class="concept">
+        <div class="concept-head">
+            <span class="concept-num">04</span>
+            <span class="concept-name">MONOGRAM</span>
+            <span class="concept-tag">// CLR · brutalist mono</span>
+            <span class="concept-desc">Heavy three-letter mark "CLR" framed by industrial brackets. Brutalist, mono, terminal-native. Reads instantly even at favicon size. The most "bad ass" of the four.</span>
+        </div>
+        <div class="display-row">
+            <div class="display-row-label">Sizes · dark</div>
+            <div class="display-row-content">
+                <div class="bg-pad bg-dark">
+                    <div class="size-stack"><svg width="16" height="16" class="logo-amber"><use href="#logo-monogram"/></svg><span class="size-label">16</span></div>
+                    <div class="size-stack"><svg width="32" height="32" class="logo-amber"><use href="#logo-monogram"/></svg><span class="size-label">32</span></div>
+                    <div class="size-stack"><svg width="64" height="64" class="logo-amber"><use href="#logo-monogram"/></svg><span class="size-label">64</span></div>
+                    <div class="size-stack"><svg width="128" height="128" class="logo-amber"><use href="#logo-monogram"/></svg><span class="size-label">128</span></div>
+                </div>
+            </div>
+        </div>
+        <div class="display-row">
+            <div class="display-row-label">On color</div>
+            <div class="display-row-content">
+                <div class="bg-pad bg-charcoal"><svg width="48" height="48" class="logo-amber"><use href="#logo-monogram"/></svg></div>
+                <div class="bg-pad bg-amber"><svg width="48" height="48" class="logo-dark"><use href="#logo-monogram"/></svg></div>
+                <div class="bg-pad bg-light"><svg width="48" height="48" class="logo-dark"><use href="#logo-monogram"/></svg></div>
+            </div>
+        </div>
+        <div class="display-row">
+            <div class="display-row-label">Lockup</div>
+            <div class="display-row-content">
+                <div class="bg-pad bg-dark">
+                    <div class="wordmark">
+                        <svg width="32" height="32" class="logo-amber"><use href="#logo-monogram"/></svg>
+                        <span class="wordmark-name">Clearance</span>
+                    </div>
+                </div>
+                <div class="bg-pad bg-dark">
+                    <div class="wordmark">
+                        <svg width="32" height="32" class="logo-amber"><use href="#logo-monogram"/></svg>
+                        <span class="wordmark-name mono">CLEARANCE</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="verdict">
+        <h2>Pick one.</h2>
+        <p>Tell me <code>01 STAMP</code>, <code>02 GATE</code>, <code>03 CHEVRON</code>, or <code>04 MONOGRAM</code> — and which wordmark style (sans or mono). I'll wire it into the live site, replace the favicon, and we ship.</p>
+    </div>
+
+</div>
+</body>
+</html>

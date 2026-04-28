@@ -4,8 +4,33 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Clearance — Human Approval API for AI Agent Commerce</title>
-    <meta name="description" content="The missing auth layer between human intent and agent execution. One API call. Human approves. Agent proceeds. Verified.">
+    <meta name="description" content="The auth layer between human intent and agent execution. One API call. Human approves. Agent proceeds. Verified on-chain.">
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+
+    <!-- Open Graph / Facebook / LinkedIn / Discord -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="{{ base_url }}/">
+    <meta property="og:title" content="Clearance — Human Approval API for AI Agent Commerce">
+    <meta property="og:description" content="Stop letting agents move money you didn't approve. One API call. Human approves. Token verifies. Built for agents that handle real budgets.">
+    <meta property="og:image" content="{{ base_url }}/static/og.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="Clearance — Stop letting agents move money you didn't approve.">
+    <meta property="og:site_name" content="Nauti-Labs">
+
+    <!-- Twitter / X -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:url" content="{{ base_url }}/">
+    <meta name="twitter:title" content="Clearance — Human Approval API for AI Agents">
+    <meta name="twitter:description" content="Stop letting agents move money you didn't approve. One API call. Human approves. Token verifies.">
+    <meta name="twitter:image" content="{{ base_url }}/static/og.png">
+    <meta name="twitter:image:alt" content="Clearance — Stop letting agents move money you didn't approve.">
+
+    <!-- Theme color for mobile browser chrome -->
+    <meta name="theme-color" content="#15151a">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     <!-- Machine-readable product data for AI agents -->
     <script type="application/ld+json">
@@ -23,27 +48,9 @@
             "url": "{{ brand_url }}"
         },
         "offers": [
-            {
-                "@type": "Offer",
-                "name": "Starter",
-                "price": "0",
-                "priceCurrency": "USD",
-                "description": "50 clearances/month, free forever"
-            },
-            {
-                "@type": "Offer",
-                "name": "Pro",
-                "price": "19",
-                "priceCurrency": "USD",
-                "description": "1,000 clearances/month, priority support"
-            },
-            {
-                "@type": "Offer",
-                "name": "Scale",
-                "price": "49",
-                "priceCurrency": "USD",
-                "description": "10,000 clearances/month, webhooks, SLA"
-            }
+            {"@type": "Offer", "name": "Starter", "price": "0", "priceCurrency": "USD", "description": "50 clearances/month, free forever"},
+            {"@type": "Offer", "name": "Pro", "price": "19", "priceCurrency": "USD", "description": "1,000 clearances/month, priority support"},
+            {"@type": "Offer", "name": "Scale", "price": "49", "priceCurrency": "USD", "description": "10,000 clearances/month, webhooks, SLA"}
         ]
     }
     </script>
@@ -52,795 +59,712 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
         :root {
-            --bg: #08080d;
-            --card: #12121c;
-            --border: #1e1e2e;
-            --amber: #f59e0b;
-            --denim: #55708d;
-            --denim-soft: #7e97b0;
-            --canvas: #171b24;
-            --green: #10b981;
-            --red: #ef4444;
-            --text: #e2e8f0;
-            --muted: #64748b;
-            --dim: #334155;
+            /* Blacksmith palette (locked) */
+            --bg: #15151a;
+            --bg-2: #1a1a1f;
+            --surface: #1f1f27;
+            --surface-2: #25252e;
+            --border: #2a2a33;
+            --border-2: #353541;
+
+            --amber: #E8912D;
+            --amber-bright: #f0a040;
+            --amber-soft: rgba(232, 145, 45, 0.12);
+
+            --steel: #8A8A8A;
+            --steel-soft: #a0a0a8;
+
+            --text: #ececf0;
+            --text-dim: #b8b8c0;
+            --muted: #7a7a85;
+            --dim: #4a4a55;
+
+            --green: #4ade80;
+            --green-soft: rgba(74, 222, 128, 0.12);
+            --red: #f87171;
+            --indigo: #818cf8;
+            --indigo-soft: rgba(129, 140, 248, 0.12);
+
+            --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+            --font-mono: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
         }
+
+        html { scroll-behavior: smooth; }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background:
-                radial-gradient(circle at top, rgba(85, 112, 141, 0.18), transparent 35%),
-                linear-gradient(180deg, #090910 0%, var(--bg) 26%);
+            font-family: var(--font-sans);
+            background: var(--bg);
+            background-image:
+                radial-gradient(ellipse 80% 50% at 50% -10%, rgba(232, 145, 45, 0.08), transparent 60%),
+                radial-gradient(ellipse 60% 50% at 100% 100%, rgba(85, 112, 141, 0.06), transparent 60%);
             color: var(--text);
             line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+            font-feature-settings: "ss01", "cv11";
         }
 
-        .container { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+        .container { max-width: 1140px; margin: 0 auto; padding: 0 28px; }
 
-        /* --- NAV --- */
+        /* === Mono utility === */
+        .mono { font-family: var(--font-mono); font-feature-settings: "calt" 0, "ss01"; }
+        .kicker {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--muted);
+            letter-spacing: 0.04em;
+            text-transform: lowercase;
+        }
+        .kicker .arrow { color: var(--amber); }
+
+        /* === NAV === */
         nav {
-            padding: 20px 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(12px) saturate(140%);
+            -webkit-backdrop-filter: blur(12px) saturate(140%);
+            background: rgba(21, 21, 26, 0.72);
             border-bottom: 1px solid var(--border);
         }
         nav .inner {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 16px 0;
         }
-        .logo {
-            font-size: 20px;
-            font-weight: 700;
-            color: #f8fafc;
-            text-decoration: none;
-            display: flex;
-            align-items: center;
-            gap: 12px;
+        .brand {
+            display: flex; align-items: center; gap: 10px;
+            text-decoration: none; color: var(--text);
         }
-        .logo-mark {
-            width: 38px;
-            height: 38px;
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background:
-                radial-gradient(circle at top right, rgba(245, 158, 11, 0.18), transparent 48%),
-                linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01));
-            border: 1px solid rgba(126, 151, 176, 0.2);
-            box-shadow: 0 12px 24px rgba(0, 0, 0, 0.18);
+        .brand-mark {
+            width: 30px; height: 30px;
+            color: var(--amber);
+            display: block;
             flex-shrink: 0;
         }
-        .logo-mark img {
-            width: 22px;
-            height: 22px;
-            display: block;
+        .brand-mark svg {
+            width: 100%; height: 100%; display: block;
         }
-        .logo-copy {
-            display: flex;
-            flex-direction: column;
-            gap: 1px;
-            line-height: 1.05;
+        .brand-name {
+            font-size: 16px; font-weight: 700; letter-spacing: -0.01em;
         }
-        .logo-copy strong {
-            font-size: 17px;
-            letter-spacing: -0.03em;
+        .brand-by {
+            font-family: var(--font-mono);
+            font-size: 11px; color: var(--muted);
+            border-left: 1px solid var(--border-2);
+            padding-left: 10px; margin-left: 4px;
         }
-        .logo-copy span {
-            font-size: 11px;
-            font-weight: 600;
-            letter-spacing: 0.12em;
-            text-transform: uppercase;
-            color: var(--denim-soft);
+        nav .nav-links { display: flex; gap: 28px; align-items: center; }
+        nav .nav-links a {
+            color: var(--text-dim); text-decoration: none;
+            font-size: 14px; font-weight: 500;
+            transition: color 0.15s;
         }
-        nav .links { display: flex; gap: 24px; align-items: center; }
-        nav .links a {
-            color: var(--muted);
-            text-decoration: none;
-            font-size: 14px;
-            font-weight: 500;
-            transition: color 0.2s;
-        }
-        nav .links a:hover { color: var(--text); }
+        nav .nav-links a:hover { color: var(--text); }
         .nav-cta {
-            background: var(--amber) !important;
-            color: #000 !important;
-            padding: 8px 16px;
-            border-radius: 8px;
-            font-weight: 600 !important;
+            background: var(--amber); color: #1a1a1f !important;
+            padding: 8px 14px; border-radius: 8px;
+            font-weight: 600 !important; font-size: 13px !important;
+            transition: background 0.15s, transform 0.15s;
         }
+        .nav-cta:hover { background: var(--amber-bright); transform: translateY(-1px); }
 
-        /* --- HERO --- */
-        .hero {
-            padding: 100px 0 80px;
-        }
-        .hero-shell {
+        /* === HERO === */
+        .hero { padding: 80px 0 60px; }
+        .hero-grid {
             display: grid;
-            grid-template-columns: minmax(0, 1.05fr) minmax(320px, 420px);
-            gap: 40px;
+            grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+            gap: 56px;
             align-items: center;
         }
-        .hero-copy {
-            text-align: left;
-        }
-        .hero-badge {
-            display: inline-block;
-            padding: 6px 16px;
-            background: var(--amber);
-            color: #000;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 1px;
+        .hero-eyebrow {
+            display: inline-flex; align-items: center; gap: 8px;
+            font-family: var(--font-mono); font-size: 12px;
+            color: var(--steel-soft);
             margin-bottom: 24px;
         }
+        .hero-eyebrow .dot {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: var(--green);
+            box-shadow: 0 0 8px var(--green);
+            animation: pulse 2s ease-in-out infinite;
+        }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
         .hero h1 {
-            font-size: clamp(36px, 5vw, 56px);
-            font-weight: 800;
-            line-height: 1.1;
-            margin-bottom: 20px;
-            color: #f8fafc;
+            font-size: clamp(38px, 5.2vw, 60px);
+            font-weight: 700;
+            line-height: 1.04;
+            letter-spacing: -0.025em;
+            color: #fafafd;
+            margin-bottom: 22px;
         }
-        .hero h1 span { color: var(--amber); }
-        .hero p {
-            font-size: 18px;
-            color: var(--muted);
-            max-width: 560px;
-            margin: 0 0 36px;
-        }
-        .hero-actions { display: flex; gap: 12px; justify-content: flex-start; flex-wrap: wrap; }
-        .hero-notes {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            margin-top: 18px;
-        }
-        .hero-note {
-            border: 1px solid rgba(126, 151, 176, 0.18);
-            background: rgba(23, 27, 36, 0.88);
-            color: var(--muted);
-            padding: 10px 14px;
-            border-radius: 999px;
-            font-size: 12px;
+        .hero h1 .accent {
+            color: var(--amber);
+            font-style: italic;
             font-weight: 600;
+        }
+        .hero p.lede {
+            font-size: 18px;
+            color: var(--text-dim);
+            max-width: 540px;
+            margin-bottom: 32px;
+            line-height: 1.55;
+        }
+        .hero-actions {
+            display: flex; gap: 12px; flex-wrap: wrap;
+            margin-bottom: 28px;
         }
         .btn-primary {
-            background: var(--amber);
-            color: #000;
-            padding: 14px 28px;
-            border-radius: 10px;
-            font-size: 15px;
-            font-weight: 700;
-            text-decoration: none;
-            transition: all 0.2s;
-            border: none;
-            cursor: pointer;
+            background: var(--amber); color: #1a1a1f;
+            padding: 13px 22px; border-radius: 10px;
+            font-size: 14px; font-weight: 600; text-decoration: none;
+            display: inline-flex; align-items: center; gap: 8px;
+            border: none; cursor: pointer; font-family: inherit;
+            transition: background 0.15s, transform 0.15s, box-shadow 0.15s;
+            box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08) inset, 0 8px 24px rgba(232, 145, 45, 0.18);
         }
-        .btn-primary:hover { background: #d97706; }
+        .btn-primary:hover {
+            background: var(--amber-bright);
+            transform: translateY(-1px);
+            box-shadow: 0 1px 0 rgba(255, 255, 255, 0.1) inset, 0 12px 32px rgba(232, 145, 45, 0.28);
+        }
         .btn-secondary {
-            background: var(--card);
-            color: var(--text);
-            padding: 14px 28px;
-            border-radius: 10px;
-            font-size: 15px;
-            font-weight: 600;
-            text-decoration: none;
+            background: var(--surface); color: var(--text);
+            padding: 13px 22px; border-radius: 10px;
+            font-size: 14px; font-weight: 500; text-decoration: none;
+            font-family: var(--font-mono);
+            display: inline-flex; align-items: center; gap: 8px;
+            border: 1px solid var(--border-2);
+            transition: border-color 0.15s, transform 0.15s, background 0.15s;
+        }
+        .btn-secondary:hover {
+            border-color: var(--steel);
+            background: var(--surface-2);
+            transform: translateY(-1px);
+        }
+        .hero-pills {
+            display: flex; flex-wrap: wrap; gap: 8px;
+        }
+        .hero-pill {
+            font-family: var(--font-mono);
+            font-size: 11px; font-weight: 500;
+            color: var(--muted);
+            padding: 6px 10px;
             border: 1px solid var(--border);
-            transition: all 0.2s;
+            border-radius: 6px;
+            background: var(--surface);
         }
-        .btn-secondary:hover { border-color: var(--muted); }
-        .hero-visual {
-            background: linear-gradient(180deg, rgba(23, 27, 36, 0.96), rgba(12, 12, 20, 0.96));
-            border: 1px solid rgba(126, 151, 176, 0.15);
-            border-radius: 26px;
-            padding: 26px;
-            box-shadow: 0 30px 90px rgba(0, 0, 0, 0.28);
-            position: relative;
-            overflow: hidden;
-        }
-        .hero-visual::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            background:
-                radial-gradient(circle at top right, rgba(245, 158, 11, 0.14), transparent 32%),
-                radial-gradient(circle at bottom left, rgba(126, 151, 176, 0.18), transparent 38%);
-            pointer-events: none;
-        }
-        .portrait-topline {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 12px;
-            position: relative;
-            z-index: 1;
-            margin-bottom: 20px;
-        }
-        .portrait-kicker {
-            color: var(--denim-soft);
-            font-size: 11px;
-            letter-spacing: 0.12em;
-            text-transform: uppercase;
-            font-weight: 700;
-        }
-        .portrait-status {
-            padding: 8px 12px;
-            border-radius: 999px;
-            background: rgba(16, 185, 129, 0.12);
-            border: 1px solid rgba(16, 185, 129, 0.18);
-            color: #8ce4bb;
-            font-size: 11px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-        }
-        .portrait-stage {
-            position: relative;
-            z-index: 1;
-            min-height: 340px;
-            border-radius: 22px;
-            padding: 24px;
-            background:
-                linear-gradient(180deg, rgba(85, 112, 141, 0.2), transparent 55%),
-                rgba(8, 8, 13, 0.85);
-            border: 1px solid rgba(126, 151, 176, 0.12);
-        }
-        .approval-window {
-            width: 170px;
-            margin-left: auto;
-            background: rgba(10, 12, 18, 0.95);
-            border: 1px solid rgba(126, 151, 176, 0.18);
-            border-radius: 18px;
-            padding: 14px;
-        }
-        .approval-window span {
-            display: block;
-            color: var(--denim-soft);
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            margin-bottom: 6px;
-        }
-        .approval-window strong {
-            display: block;
-            font-size: 16px;
-            margin-bottom: 10px;
-        }
-        .approval-window p {
-            font-size: 12px;
-            color: var(--muted);
-            margin: 0 0 12px;
-        }
-        .approval-chips {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-        }
-        .approval-chip {
-            padding: 7px 10px;
-            border-radius: 999px;
-            font-size: 11px;
-            font-weight: 700;
-            background: rgba(85, 112, 141, 0.18);
-            color: var(--text);
-        }
-        .approval-chip.approved {
-            background: rgba(16, 185, 129, 0.16);
-            color: #8ce4bb;
-        }
-        .agent-window {
-            position: absolute;
-            left: 22px;
-            top: 110px;
-            width: 172px;
-            background: rgba(10, 12, 18, 0.95);
-            border: 1px solid rgba(129, 140, 248, 0.16);
-            border-radius: 16px;
-            padding: 14px;
-            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
-        }
-        .agent-window span {
-            display: block;
-            color: #a5b4fc;
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            margin-bottom: 8px;
-            font-weight: 700;
-        }
-        .agent-window pre {
-            margin: 0;
-            color: #cbd5e1;
-            font-size: 11px;
-            line-height: 1.55;
-            font-family: 'SF Mono', Monaco, Consolas, monospace;
-            white-space: pre-wrap;
-        }
-        .operator-scene {
-            position: absolute;
-            left: 30px;
-            right: 36px;
-            bottom: 18px;
-            height: 235px;
-        }
-        .operator-aura {
-            position: absolute;
-            left: 70px;
-            top: -28px;
-            width: 172px;
-            height: 172px;
-            border-radius: 50%;
-            background:
-                radial-gradient(circle, rgba(245, 158, 11, 0.18) 0%, rgba(245, 158, 11, 0.06) 34%, transparent 68%);
-            filter: blur(8px);
-            opacity: 0.95;
-        }
-        .operator-badge {
-            position: absolute;
-            left: 88px;
-            top: -86px;
-            width: 112px;
-            height: 134px;
-            z-index: 3;
-            transform: rotate(-5deg);
-        }
-        .glitch-sticker {
-            position: absolute;
-            inset: 0;
-            padding: 12px 12px 10px;
-            border-radius: 28px;
-            background:
-                linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.06)),
-                linear-gradient(180deg, #111827 0%, #0b1020 100%);
-            border: 1px solid rgba(126, 151, 176, 0.28);
-            box-shadow:
-                0 18px 34px rgba(0, 0, 0, 0.28),
-                inset 0 1px 0 rgba(255, 255, 255, 0.08);
-        }
-        .glitch-sticker::before {
-            content: '';
-            position: absolute;
-            inset: 8px;
-            border-radius: 22px;
-            border: 1px dashed rgba(245, 158, 11, 0.24);
-            pointer-events: none;
-        }
-        .glitch-top {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 8px;
-            margin-bottom: 6px;
-        }
-        .glitch-tag {
-            color: #f59e0b;
-            font-size: 9px;
-            font-weight: 800;
-            letter-spacing: 0.12em;
-            text-transform: uppercase;
-        }
-        .glitch-stars {
-            color: #fbbf24;
-            font-size: 9px;
-            letter-spacing: 0.08em;
-        }
-        .glitch-face {
-            width: 100%;
-            height: 72px;
-            display: block;
-            margin-bottom: 6px;
-            filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.2));
-        }
-        .glitch-copy {
-            text-align: center;
-            font-size: 9px;
-            line-height: 1.35;
-            color: var(--denim-soft);
-            font-weight: 700;
-            letter-spacing: 0.06em;
-            text-transform: uppercase;
-        }
-        .operator-card {
-            position: absolute;
-            left: 0;
-            bottom: 0;
-            width: 248px;
-            height: 194px;
-            border-radius: 34px 34px 22px 22px;
-            background:
-                linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 18%),
-                linear-gradient(180deg, #607d99 0%, #496278 55%, #3a4d61 100%);
-            box-shadow:
-                inset 0 -18px 30px rgba(0, 0, 0, 0.2),
-                0 16px 30px rgba(0, 0, 0, 0.18);
-        }
-        .operator-card::before {
-            content: '';
-            position: absolute;
-            left: 50%;
-            top: 14px;
-            width: 3px;
-            bottom: 22px;
-            border-radius: 999px;
-            background: rgba(248, 250, 252, 0.18);
-            transform: translateX(-50%);
-        }
-        .operator-card::after {
-            content: '';
-            position: absolute;
-            inset: 24px 28px auto;
-            height: 16px;
-            border-radius: 999px;
-            background: rgba(248, 250, 252, 0.14);
-        }
-        .operator-pocket {
-            position: absolute;
-            top: 58px;
-            width: 62px;
-            height: 72px;
-            border-radius: 16px 16px 18px 18px;
-            border: 1px solid rgba(248, 250, 252, 0.14);
-            background: rgba(255, 255, 255, 0.04);
-            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-        }
-        .operator-pocket.left { left: 32px; }
-        .operator-pocket.right { right: 32px; }
-        .operator-pocket::before {
-            content: '';
-            position: absolute;
-            left: 10px;
-            right: 10px;
-            top: 10px;
-            height: 10px;
-            border-radius: 999px;
-            background: rgba(248, 250, 252, 0.1);
-        }
-        .desk {
-            position: absolute;
-            left: -12px;
-            right: -4px;
-            bottom: -8px;
-            height: 62px;
-            border-radius: 26px 26px 0 0;
-            background: linear-gradient(180deg, #282f3d, #171b24);
-            border-top: 1px solid rgba(126, 151, 176, 0.15);
-        }
-        .screen {
-            position: absolute;
-            right: 12px;
-            bottom: 40px;
-            width: 142px;
-            height: 108px;
-            background: #0d1118;
-            border: 1px solid rgba(126, 151, 176, 0.18);
-            border-radius: 16px;
-            padding: 14px;
-        }
-        .screen::before,
-        .screen::after {
-            content: '';
-            display: block;
-            height: 10px;
-            border-radius: 999px;
-            background: rgba(126, 151, 176, 0.18);
-            margin-bottom: 8px;
-        }
-        .screen::after {
-            width: 60%;
-            margin-bottom: 0;
-        }
-        .screen-row {
-            display: flex;
-            gap: 8px;
-            margin-top: 18px;
-        }
-        .screen-pill {
-            flex: 1;
-            height: 34px;
-            border-radius: 12px;
-            background: rgba(85, 112, 141, 0.18);
-        }
-        .screen-pill.ok {
-            background: rgba(16, 185, 129, 0.18);
-        }
-        .portrait-caption {
-            position: relative;
-            z-index: 1;
-            margin-top: 18px;
-            color: var(--muted);
-            font-size: 13px;
-            max-width: 320px;
+        .hero-pill .pill-dot {
+            color: var(--amber); margin-right: 6px;
         }
 
-        /* --- CODE BLOCK --- */
-        .code-section { padding: 0 0 80px; }
-        .code-block {
-            background: #0c0c14;
-            border: 1px solid var(--border);
-            border-radius: 12px;
+        /* === Terminal === */
+        .terminal {
+            background: #0e0e13;
+            border: 1px solid var(--border-2);
+            border-radius: 14px;
             overflow: hidden;
-            max-width: 720px;
-            margin: 0 auto;
+            box-shadow:
+                0 1px 0 rgba(255, 255, 255, 0.04) inset,
+                0 30px 80px rgba(0, 0, 0, 0.45),
+                0 0 0 1px rgba(232, 145, 45, 0.04);
         }
-        .code-tabs {
-            display: flex;
+        .terminal-bar {
+            display: flex; align-items: center; gap: 8px;
+            padding: 12px 16px;
+            background: #0a0a0f;
             border-bottom: 1px solid var(--border);
-            padding: 0 4px;
         }
-        .code-tab {
-            padding: 10px 16px;
-            font-size: 12px;
-            font-weight: 600;
-            color: var(--muted);
-            cursor: pointer;
-            border-bottom: 2px solid transparent;
-            transition: all 0.2s;
-            background: none;
-            border-top: none;
-            border-left: none;
-            border-right: none;
-            font-family: inherit;
+        .terminal-dot {
+            width: 11px; height: 11px; border-radius: 50%;
+            background: var(--dim);
         }
-        .code-tab.active { color: var(--amber); border-bottom-color: var(--amber); }
-        .code-content {
-            padding: 20px 24px;
-            overflow-x: auto;
+        .terminal-dot.r { background: #ff5f57; }
+        .terminal-dot.y { background: #febc2e; }
+        .terminal-dot.g { background: #28c840; }
+        .terminal-title {
+            margin-left: 12px;
+            font-family: var(--font-mono);
+            font-size: 12px; color: var(--muted);
         }
-        .code-content pre {
-            font-family: 'SF Mono', Monaco, Consolas, monospace;
+        .terminal-body {
+            padding: 22px 22px 24px;
+            font-family: var(--font-mono);
             font-size: 13px;
-            line-height: 1.7;
-            color: var(--text);
+            line-height: 1.75;
+            min-height: 360px;
         }
-        .code-content .comment { color: var(--dim); }
-        .code-content .string { color: var(--green); }
-        .code-content .key { color: var(--amber); }
-        .code-content .url { color: #818cf8; }
+        .term-line { display: block; }
+        .term-prompt { color: var(--amber); margin-right: 8px; }
+        .term-cmd { color: var(--text); }
+        .term-comment { color: var(--dim); }
+        .term-key { color: var(--amber); }
+        .term-str { color: #86efac; }
+        .term-num { color: #fbbf24; }
+        .term-url { color: var(--indigo); }
+        .term-status-pending { color: #fbbf24; }
+        .term-status-approved { color: var(--green); font-weight: 600; }
+        .term-status-approved::before {
+            content: '✓ '; color: var(--green);
+        }
+        .term-cursor {
+            display: inline-block;
+            width: 8px; height: 14px;
+            background: var(--amber);
+            vertical-align: text-bottom;
+            margin-left: 2px;
+            animation: blink 1s step-end infinite;
+        }
+        @keyframes blink { 50% { opacity: 0; } }
 
-        /* --- HOW IT WORKS --- */
-        .how-section { padding: 80px 0; }
+        /* === TRUST STRIP === */
+        .trust {
+            border-top: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+            padding: 20px 0;
+            background: rgba(255, 255, 255, 0.005);
+        }
+        .trust-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 24px;
+            align-items: center;
+        }
+        .trust-item {
+            display: flex; align-items: center; gap: 12px;
+            padding: 0 8px;
+        }
+        .trust-item:not(:last-child) {
+            border-right: 1px solid var(--border);
+        }
+        .trust-glyph {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--amber);
+            background: var(--amber-soft);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .trust-text {
+            font-size: 13px; color: var(--text-dim);
+            line-height: 1.4;
+        }
+
+        /* === SECTION === */
+        section.std { padding: 90px 0; }
+        .section-eyebrow {
+            font-family: var(--font-mono);
+            font-size: 12px; color: var(--amber);
+            text-align: center; margin-bottom: 14px;
+            letter-spacing: 0.02em;
+        }
         .section-title {
             text-align: center;
-            font-size: 32px;
+            font-size: clamp(28px, 3.4vw, 38px);
             font-weight: 700;
-            margin-bottom: 12px;
-            color: #f8fafc;
+            margin-bottom: 14px;
+            color: #fafafd;
+            letter-spacing: -0.02em;
         }
         .section-sub {
             text-align: center;
             color: var(--muted);
             font-size: 16px;
-            margin-bottom: 60px;
+            margin-bottom: 56px;
+            max-width: 540px;
+            margin-left: auto; margin-right: auto;
         }
+
+        /* === HOW IT WORKS === */
         .steps {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 24px;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 18px;
         }
         .step {
-            background: var(--card);
+            background: var(--surface);
             border: 1px solid var(--border);
             border-radius: 14px;
-            padding: 32px 28px;
+            padding: 28px 26px;
             position: relative;
+            transition: border-color 0.2s, transform 0.2s;
+        }
+        .step:hover {
+            border-color: var(--border-2);
+            transform: translateY(-2px);
         }
         .step-num {
-            width: 36px;
-            height: 36px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--amber);
+            margin-bottom: 14px;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .step-num::before {
+            content: '';
+            width: 24px; height: 1px;
             background: var(--amber);
-            color: #000;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 800;
-            font-size: 16px;
-            margin-bottom: 16px;
         }
         .step h3 {
-            font-size: 18px;
-            font-weight: 700;
-            margin-bottom: 8px;
-            color: #f8fafc;
+            font-size: 18px; font-weight: 600;
+            margin-bottom: 8px; color: #fafafd;
+            letter-spacing: -0.01em;
         }
-        .step p { color: var(--muted); font-size: 14px; }
-        .step .actor {
+        .step p {
+            color: var(--text-dim);
+            font-size: 14px;
+            margin-bottom: 16px;
+        }
+        .step-snippet {
+            background: #0e0e13;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: var(--text-dim);
+            line-height: 1.55;
+            overflow-x: auto;
+        }
+        .step-snippet .m-post { color: var(--green); font-weight: 600; }
+        .step-snippet .m-get { color: var(--indigo); font-weight: 600; }
+        .step-snippet .m-path { color: var(--text); }
+        .step-actor {
             display: inline-block;
-            margin-top: 12px;
-            padding: 4px 10px;
-            border-radius: 6px;
-            font-size: 11px;
-            font-weight: 700;
+            margin-top: 14px;
+            padding: 3px 10px;
+            border-radius: 4px;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 0.05em;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
         }
-        .actor-agent { background: #818cf820; color: #818cf8; }
-        .actor-human { background: #10b98120; color: #10b981; }
-        .actor-service { background: #f59e0b20; color: #f59e0b; }
+        .actor-agent { background: var(--indigo-soft); color: var(--indigo); }
+        .actor-human { background: var(--green-soft); color: var(--green); }
+        .actor-service { background: var(--amber-soft); color: var(--amber); }
 
-        /* --- PRICING --- */
-        .pricing-section { padding: 80px 0; }
+        /* === CODE BLOCK === */
+        .code-section { padding: 0 0 90px; }
+        .code-block {
+            background: #0e0e13;
+            border: 1px solid var(--border-2);
+            border-radius: 14px;
+            overflow: hidden;
+            max-width: 820px;
+            margin: 0 auto;
+            box-shadow: 0 24px 60px rgba(0, 0, 0, 0.3);
+        }
+        .code-tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border);
+            padding: 0 12px;
+            background: #0a0a0f;
+        }
+        .code-tab {
+            padding: 14px 18px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--muted);
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -1px;
+            background: none;
+            border-top: none; border-left: none; border-right: none;
+            transition: color 0.15s, border-color 0.15s;
+        }
+        .code-tab:hover { color: var(--text-dim); }
+        .code-tab.active { color: var(--amber); border-bottom-color: var(--amber); }
+        .code-content {
+            padding: 22px 26px;
+            overflow-x: auto;
+        }
+        .code-content pre {
+            font-family: var(--font-mono);
+            font-size: 13px;
+            line-height: 1.75;
+            color: var(--text);
+        }
+        .code-content .comment { color: var(--dim); font-style: italic; }
+        .code-content .string { color: #86efac; }
+        .code-content .key { color: var(--amber); }
+        .code-content .url { color: var(--indigo); }
+
+        /* === PRICING === */
         .pricing-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 20px;
-            max-width: 920px;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 18px;
+            max-width: 980px;
             margin: 0 auto;
         }
         .price-card {
-            background: var(--card);
+            background: var(--surface);
             border: 1px solid var(--border);
             border-radius: 14px;
             padding: 32px 28px;
-            text-align: center;
+            position: relative;
+            transition: border-color 0.2s, transform 0.2s;
+        }
+        .price-card:hover {
+            border-color: var(--border-2);
+            transform: translateY(-2px);
         }
         .price-card.featured {
             border-color: var(--amber);
-            position: relative;
+            box-shadow: 0 0 0 1px var(--amber), 0 24px 60px rgba(232, 145, 45, 0.12);
         }
         .price-card.featured::before {
             content: 'MOST POPULAR';
             position: absolute;
-            top: -12px;
-            left: 50%;
+            top: -10px; left: 50%;
             transform: translateX(-50%);
             background: var(--amber);
-            color: #000;
-            padding: 4px 14px;
-            border-radius: 20px;
+            color: #1a1a1f;
+            padding: 4px 12px;
+            border-radius: 999px;
+            font-family: var(--font-mono);
             font-size: 10px;
-            font-weight: 800;
-            letter-spacing: 1px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
         }
         .price-name {
-            font-size: 18px;
-            font-weight: 700;
-            margin-bottom: 8px;
-            color: #f8fafc;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--amber);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 14px;
         }
         .price-amount {
-            font-size: 42px;
-            font-weight: 800;
-            color: #f8fafc;
-            margin-bottom: 4px;
+            font-family: var(--font-mono);
+            font-size: 44px;
+            font-weight: 700;
+            color: #fafafd;
+            line-height: 1;
+            margin-bottom: 6px;
+            letter-spacing: -0.02em;
         }
-        .price-amount span { font-size: 16px; color: var(--muted); font-weight: 400; }
+        .price-amount .per {
+            font-family: var(--font-mono);
+            font-size: 14px; color: var(--muted); font-weight: 500;
+        }
         .price-desc {
             color: var(--muted);
-            font-size: 14px;
-            margin-bottom: 24px;
+            font-size: 13px;
+            margin-bottom: 22px;
         }
         .price-features {
             list-style: none;
-            text-align: left;
-            margin-bottom: 28px;
+            margin-bottom: 26px;
+            padding: 18px 0;
+            border-top: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
         }
         .price-features li {
-            padding: 6px 0;
-            font-size: 14px;
-            color: var(--text);
+            padding: 5px 0;
+            font-size: 13px;
+            color: var(--text-dim);
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 10px;
         }
         .price-features li::before {
-            content: '\2713';
-            color: var(--green);
+            content: '→';
+            color: var(--amber);
+            font-family: var(--font-mono);
             font-weight: 700;
+            font-size: 13px;
         }
         .price-btn {
             display: block;
             width: 100%;
-            padding: 12px;
-            border-radius: 10px;
-            font-size: 14px;
-            font-weight: 700;
+            padding: 11px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
             text-decoration: none;
             text-align: center;
-            transition: all 0.2s;
+            transition: all 0.15s;
             cursor: pointer;
             border: none;
             font-family: inherit;
         }
         .price-btn-free {
-            background: var(--card);
+            background: transparent;
             color: var(--text);
-            border: 1px solid var(--border);
+            border: 1px solid var(--border-2);
+        }
+        .price-btn-free:hover {
+            border-color: var(--steel);
+            background: var(--surface-2);
         }
         .price-btn-pay {
             background: var(--amber);
-            color: #000;
+            color: #1a1a1f;
         }
-        .price-btn-pay:hover { background: #d97706; }
-
+        .price-btn-pay:hover {
+            background: var(--amber-bright);
+            transform: translateY(-1px);
+        }
         .crypto-note {
             text-align: center;
-            margin-top: 24px;
+            margin-top: 32px;
             font-size: 13px;
             color: var(--muted);
+            max-width: 640px;
+            margin-left: auto; margin-right: auto;
+            line-height: 1.6;
         }
-        .crypto-note strong { color: var(--text); }
+        .crypto-note strong {
+            color: var(--text);
+            font-family: var(--font-mono);
+            font-weight: 500;
+        }
 
-        /* --- AGENTS SECTION --- */
+        /* === FOR AGENTS === */
         .agents-section {
-            padding: 80px 0;
+            padding: 90px 0;
             border-top: 1px solid var(--border);
+            background:
+                radial-gradient(ellipse 50% 80% at 50% 0%, var(--indigo-soft), transparent 60%);
         }
-        .agents-section .inner {
-            max-width: 720px;
-            margin: 0 auto;
-        }
-        .agent-badge {
-            display: inline-block;
-            padding: 6px 14px;
-            background: #818cf820;
-            color: #818cf8;
-            border-radius: 8px;
-            font-size: 12px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 20px;
+        .agents-inner { max-width: 760px; margin: 0 auto; }
+        .agents-badge {
+            display: inline-flex; align-items: center; gap: 8px;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--indigo);
+            background: var(--indigo-soft);
+            border: 1px solid rgba(129, 140, 248, 0.25);
+            padding: 6px 12px;
+            border-radius: 6px;
+            margin-bottom: 22px;
+            letter-spacing: 0.05em;
         }
         .agents-section h2 {
-            font-size: 28px;
+            font-size: 32px;
             font-weight: 700;
             margin-bottom: 12px;
-            color: #f8fafc;
+            color: #fafafd;
+            letter-spacing: -0.02em;
         }
-        .agents-section > .inner > p {
-            color: var(--muted);
-            margin-bottom: 24px;
+        .agents-section .lede {
+            color: var(--text-dim);
             font-size: 16px;
+            margin-bottom: 28px;
+            line-height: 1.6;
+        }
+        .agents-section .lede code {
+            font-family: var(--font-mono);
+            font-size: 13px;
+            background: var(--surface);
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: var(--amber);
         }
         .agent-endpoint {
-            background: #0c0c14;
+            background: var(--surface);
             border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 16px 20px;
-            margin-bottom: 12px;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 8px;
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 14px;
+            transition: border-color 0.15s;
         }
+        .agent-endpoint:hover { border-color: var(--border-2); }
         .method {
-            padding: 4px 8px;
+            padding: 3px 8px;
             border-radius: 4px;
-            font-size: 11px;
-            font-weight: 800;
-            font-family: 'SF Mono', monospace;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            font-weight: 700;
+            min-width: 48px;
+            text-align: center;
         }
-        .method-post { background: #10b98120; color: #10b981; }
-        .method-get { background: #818cf820; color: #818cf8; }
+        .method-post { background: var(--green-soft); color: var(--green); }
+        .method-get { background: var(--indigo-soft); color: var(--indigo); }
         .endpoint-path {
-            font-family: 'SF Mono', monospace;
+            font-family: var(--font-mono);
             font-size: 13px;
             color: var(--text);
+            flex: 1;
         }
         .endpoint-desc {
             font-size: 12px;
             color: var(--muted);
-            margin-left: auto;
         }
 
-        /* --- FOOTER --- */
-        footer {
-            padding: 40px 0;
+        /* === FINAL CTA === */
+        .final-cta {
+            padding: 90px 0;
             border-top: 1px solid var(--border);
             text-align: center;
         }
-        footer p {
-            font-size: 13px;
-            color: var(--dim);
+        .final-cta h2 {
+            font-size: clamp(28px, 3.6vw, 40px);
+            font-weight: 700;
+            margin-bottom: 14px;
+            color: #fafafd;
+            letter-spacing: -0.02em;
+            line-height: 1.15;
         }
-        footer a { color: var(--muted); text-decoration: none; }
+        .final-cta h2 .accent {
+            color: var(--amber); font-style: italic; font-weight: 600;
+        }
+        .final-cta p {
+            color: var(--text-dim);
+            font-size: 16px;
+            margin-bottom: 32px;
+            max-width: 480px;
+            margin-left: auto; margin-right: auto;
+        }
 
-        /* --- PAYMENT MODAL --- */
+        /* === FOOTER === */
+        footer {
+            padding: 40px 0 60px;
+            border-top: 1px solid var(--border);
+        }
+        footer .inner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 24px;
+            flex-wrap: wrap;
+        }
+        footer .footer-brand {
+            font-family: var(--font-mono);
+            font-size: 13px;
+            color: var(--muted);
+        }
+        footer .footer-brand strong { color: var(--text-dim); font-weight: 500; }
+        footer .footer-brand a { color: var(--amber); text-decoration: none; }
+        footer .footer-brand a:hover { text-decoration: underline; }
+        footer .footer-links {
+            display: flex; gap: 24px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+        }
+        footer .footer-links a {
+            color: var(--muted);
+            text-decoration: none;
+            transition: color 0.15s;
+        }
+        footer .footer-links a:hover { color: var(--text); }
+
+        /* === MODAL === */
         .modal-overlay {
             display: none;
             position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.8);
+            inset: 0;
+            background: rgba(10, 10, 14, 0.85);
+            backdrop-filter: blur(6px);
             z-index: 1000;
             align-items: center;
             justify-content: center;
@@ -848,28 +772,34 @@
         }
         .modal-overlay.active { display: flex; }
         .modal {
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            max-width: 460px;
+            background: var(--surface);
+            border: 1px solid var(--border-2);
+            border-radius: 14px;
+            max-width: 480px;
             width: 100%;
             padding: 32px;
+            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
         }
         .modal h2 {
             font-size: 20px;
             font-weight: 700;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
+            color: #fafafd;
+            letter-spacing: -0.01em;
         }
         .modal .close-modal {
             float: right;
             background: none;
             border: none;
             color: var(--muted);
-            font-size: 24px;
+            font-size: 22px;
             cursor: pointer;
+            line-height: 1;
+            padding: 4px 8px;
         }
+        .modal .close-modal:hover { color: var(--text); }
         .wallet-display {
-            background: #0c0c14;
+            background: #0e0e13;
             border: 1px solid var(--border);
             border-radius: 10px;
             padding: 16px;
@@ -877,20 +807,21 @@
             text-align: center;
         }
         .wallet-label {
-            font-size: 11px;
+            font-family: var(--font-mono);
+            font-size: 10px;
             color: var(--muted);
             text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 0.08em;
             margin-bottom: 8px;
         }
         .wallet-addr {
-            font-family: 'SF Mono', monospace;
+            font-family: var(--font-mono);
             font-size: 12px;
             color: var(--amber);
             word-break: break-all;
             cursor: pointer;
             padding: 8px;
-            background: #1a1a2e;
+            background: rgba(232, 145, 45, 0.06);
             border-radius: 6px;
         }
         .wallet-ens {
@@ -898,28 +829,30 @@
             color: var(--text);
             margin-top: 8px;
             font-weight: 600;
+            font-family: var(--font-mono);
         }
         .wallet-actions {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 10px;
+            gap: 8px;
             margin-top: 12px;
         }
         .wallet-action {
-            background: #1a1a2e;
-            border: 1px solid var(--border);
+            background: var(--surface-2);
+            border: 1px solid var(--border-2);
             color: var(--text);
             border-radius: 8px;
-            padding: 10px 12px;
+            padding: 10px;
             font-size: 12px;
-            font-weight: 700;
+            font-weight: 600;
             cursor: pointer;
-            transition: border-color 0.2s, transform 0.2s;
+            font-family: inherit;
+            transition: border-color 0.15s, transform 0.15s;
         }
         .wallet-action:hover { border-color: var(--amber); transform: translateY(-1px); }
         .wallet-action.primary {
             background: var(--amber);
-            color: #000;
+            color: #1a1a1f;
             border-color: var(--amber);
         }
         .wallet-summary {
@@ -927,7 +860,7 @@
             margin: 16px 0;
             padding: 0;
             display: grid;
-            gap: 8px;
+            gap: 6px;
         }
         .wallet-summary li {
             display: flex;
@@ -935,36 +868,40 @@
             gap: 12px;
             font-size: 12px;
             color: var(--muted);
+            font-family: var(--font-mono);
         }
         .wallet-summary strong {
             color: var(--text);
-            font-weight: 600;
+            font-weight: 500;
         }
         .wallet-request {
             margin-top: 12px;
-            padding: 10px 12px;
-            border-radius: 8px;
-            background: #1a1a2e;
+            padding: 10px;
+            border-radius: 6px;
+            background: var(--surface-2);
             color: var(--muted);
+            font-family: var(--font-mono);
             font-size: 11px;
             line-height: 1.5;
             word-break: break-all;
         }
         .wallet-networks {
-            font-size: 12px;
+            font-family: var(--font-mono);
+            font-size: 11px;
             color: var(--muted);
             margin-top: 8px;
         }
         .modal-amount {
-            font-size: 24px;
+            font-family: var(--font-mono);
+            font-size: 22px;
             font-weight: 700;
             text-align: center;
-            margin: 16px 0;
-            color: #f8fafc;
+            margin: 14px 0;
+            color: #fafafd;
         }
         .modal-input {
             width: 100%;
-            background: #0c0c14;
+            background: #0e0e13;
             border: 1px solid var(--border);
             border-radius: 8px;
             padding: 12px 14px;
@@ -972,40 +909,45 @@
             font-size: 14px;
             font-family: inherit;
             outline: none;
-            margin-bottom: 12px;
-            transition: border-color 0.2s;
+            margin-bottom: 10px;
+            transition: border-color 0.15s;
         }
         .modal-input:focus { border-color: var(--amber); }
         .modal-input::placeholder { color: var(--dim); }
         .modal-help {
             font-size: 12px;
             color: var(--muted);
-            margin-bottom: 16px;
+            margin-bottom: 14px;
+            line-height: 1.5;
+        }
+        .modal-tier-label {
+            font-family: var(--font-mono);
+            color: var(--muted);
+            font-size: 12px;
         }
 
-        @media (max-width: 640px) {
-            .hero { padding: 60px 0 40px; }
-            .hero-shell { grid-template-columns: 1fr; gap: 28px; }
-            .hero-copy { text-align: center; }
-            .hero p { margin: 0 auto 28px; }
-            .hero-actions { justify-content: center; }
-            .hero-notes { justify-content: center; }
-            .portrait-stage { min-height: 320px; padding: 18px; }
-            .approval-window { width: 100%; margin-left: 0; }
-            .agent-window {
-                position: static;
-                width: 100%;
-                margin-top: 16px;
-            }
-            .operator-scene { left: 14px; right: 14px; }
-            .operator-aura { left: 52px; top: -14px; width: 150px; height: 150px; }
-            .operator-badge { left: 64px; top: -68px; transform: scale(0.9) rotate(-5deg); transform-origin: top center; }
-            .operator-card { width: 220px; height: 180px; }
-            .operator-pocket { width: 56px; height: 66px; }
-            .screen { width: 126px; height: 102px; right: 0; }
+        /* === RESPONSIVE === */
+        @media (max-width: 880px) {
+            .hero-grid { grid-template-columns: 1fr; gap: 48px; }
+            .terminal-body { font-size: 12px; min-height: auto; }
+            .trust-grid { grid-template-columns: repeat(2, 1fr); gap: 16px; }
+            .trust-item:nth-child(2) { border-right: none; }
             .steps { grid-template-columns: 1fr; }
             .pricing-grid { grid-template-columns: 1fr; }
-            nav .links { display: none; }
+            nav .nav-links a:not(.nav-cta) { display: none; }
+            .brand-by { display: none; }
+            section.std { padding: 64px 0; }
+            footer .inner { flex-direction: column; align-items: flex-start; }
+        }
+
+        @media (max-width: 520px) {
+            .container { padding: 0 20px; }
+            .hero { padding: 48px 0 32px; }
+            .hero h1 { font-size: 36px; }
+            .hero p.lede { font-size: 16px; }
+            .terminal-body { padding: 16px; }
+            .trust-grid { grid-template-columns: 1fr; }
+            .trust-item { border-right: none !important; }
             .endpoint-desc { display: none; }
         }
     </style>
@@ -1015,20 +957,22 @@
 <!-- NAV -->
 <nav>
     <div class="container inner">
-        <a href="/" class="logo">
-            <div class="logo-mark">
-                <img src="/static/harbor-mark.svg" alt="" aria-hidden="true">
-            </div>
-            <div class="logo-copy">
-                <strong>Clearance</strong>
-                <span>Human Approval API</span>
-            </div>
+        <a href="/" class="brand">
+            <span class="brand-mark" aria-hidden="true">
+                <svg viewBox="0 0 100 100" fill="none">
+                    <path d="M 18 30 L 38 50 L 18 70" stroke="currentColor" stroke-width="11" stroke-linecap="square" stroke-linejoin="miter" opacity="0.45" fill="none"/>
+                    <path d="M 40 30 L 60 50 L 40 70" stroke="currentColor" stroke-width="11" stroke-linecap="square" stroke-linejoin="miter" opacity="0.75" fill="none"/>
+                    <path d="M 62 30 L 82 50 L 62 70" stroke="currentColor" stroke-width="11" stroke-linecap="square" stroke-linejoin="miter" fill="none"/>
+                </svg>
+            </span>
+            <span class="brand-name">Clearance</span>
+            <span class="brand-by">by Nauti-Labs</span>
         </a>
-        <div class="links">
-            <a href="#how">How It Works</a>
+        <div class="nav-links">
+            <a href="#how">How it works</a>
             <a href="#pricing">Pricing</a>
-            <a href="#agents">For Agents</a>
-            <a href="/v1/docs" class="nav-cta">API Docs</a>
+            <a href="#agents">For agents</a>
+            <a href="/v1/docs" class="nav-cta">API Docs →</a>
         </div>
     </div>
 </nav>
@@ -1036,91 +980,120 @@
 <!-- HERO -->
 <section class="hero">
     <div class="container">
-        <div class="hero-shell">
+        <div class="hero-grid">
             <div class="hero-copy">
-                <div class="hero-badge">Agent-Authorized Commerce</div>
-                <h1>Your agent needs<br><span>human clearance.</span><br>One API call.</h1>
-                <p>The missing auth layer between human intent and agent execution. Agents request, humans approve, services verify. Calm enough for a real team, strict enough for money movement.</p>
-                <div class="hero-actions">
-                    <a href="#pricing" class="btn-primary">Get API Key &mdash; Free</a>
-                    <a href="#agents" class="btn-secondary">View API &rarr;</a>
+                <div class="hero-eyebrow">
+                    <span class="dot"></span>
+                    <span>clearance.nauti-labs.com // human-in-the-loop API</span>
                 </div>
-                <div class="hero-notes">
-                    <div class="hero-note">Human-in-the-loop by default</div>
-                    <div class="hero-note">USDC on Base for paid plans</div>
-                    <div class="hero-note">Readable by people and bots</div>
+                <h1>Stop letting agents move money <span class="accent">you didn't approve.</span></h1>
+                <p class="lede">One API call. The human approves with one tap. Any service verifies the signed token. Built for agents that handle real budgets — not toy demos.</p>
+                <div class="hero-actions">
+                    <button class="btn-primary" onclick="getFreeTier()">Get Free API Key →</button>
+                    <a href="/v1/docs" class="btn-secondary">$ read --docs</a>
+                </div>
+                <div class="hero-pills">
+                    <div class="hero-pill"><span class="pill-dot">▸</span>50 free clearances/mo</div>
+                    <div class="hero-pill"><span class="pill-dot">▸</span>No credit card</div>
+                    <div class="hero-pill"><span class="pill-dot">▸</span>Pay in USDC when you scale</div>
                 </div>
             </div>
-            <div class="hero-visual">
-                <div class="portrait-topline">
-                    <div class="portrait-kicker">Operator Layer</div>
-                    <div class="portrait-status">Approval Online</div>
-                </div>
-                <div class="portrait-stage">
-                    <div class="approval-window">
-                        <span>Request</span>
-                        <strong>Book service van</strong>
-                        <p>Budget: $180. Agent waits. Human reviews. Nothing moves until someone actually says yes.</p>
-                        <div class="approval-chips">
-                            <div class="approval-chip">Pending</div>
-                            <div class="approval-chip approved">Approved</div>
-                        </div>
-                    </div>
-                    <div class="agent-window">
-                        <span>Agent View</span>
-                        <pre>POST /v1/clearances
-scope: "book:service"
-budget: 180 USD
-status: pending</pre>
-                    </div>
-                    <div class="operator-scene" aria-hidden="true">
-                        <div class="operator-aura"></div>
-                        <div class="operator-badge">
-                            <div class="glitch-sticker">
-                                <div class="glitch-top">
-                                    <div class="glitch-tag">Glitch</div>
-                                    <div class="glitch-stars">★★★★★</div>
-                                </div>
-                                <svg class="glitch-face" viewBox="0 0 120 82" xmlns="http://www.w3.org/2000/svg">
-                                    <rect x="28" y="4" width="64" height="18" rx="8" fill="rgba(248,250,252,0.12)"/>
-                                    <rect x="20" y="20" width="80" height="46" rx="16" fill="#d7dfeb" stroke="#f8fafc" stroke-opacity="0.14"/>
-                                    <circle cx="44" cy="40" r="4.2" fill="#111827"/>
-                                    <circle cx="76" cy="40" r="4.2" fill="#111827"/>
-                                    <rect x="48" y="50" width="24" height="6" rx="3" fill="#111827"/>
-                                    <rect x="34" y="14" width="8" height="6" rx="3" fill="#f59e0b"/>
-                                    <rect x="78" y="14" width="8" height="6" rx="3" fill="#f59e0b"/>
-                                    <path d="M30 72h60" stroke="#f59e0b" stroke-width="4" stroke-linecap="round"/>
-                                </svg>
-                                <div class="glitch-copy">Keeper patch<br>human approved</div>
-                            </div>
-                        </div>
-                        <div class="operator-card">
-                            <div class="operator-pocket left"></div>
-                            <div class="operator-pocket right"></div>
-                        </div>
-                        <div class="screen">
-                            <div class="screen-row">
-                                <div class="screen-pill"></div>
-                                <div class="screen-pill ok"></div>
-                            </div>
-                        </div>
-                        <div class="desk"></div>
-                    </div>
-                </div>
 
+            <div class="terminal" aria-hidden="false">
+                <div class="terminal-bar">
+                    <div class="terminal-dot r"></div>
+                    <div class="terminal-dot y"></div>
+                    <div class="terminal-dot g"></div>
+                    <div class="terminal-title">agent.session — clearance</div>
+                </div>
+                <div class="terminal-body">
+<span class="term-line"><span class="term-comment"># 1. Agent requests clearance</span></span>
+<span class="term-line"><span class="term-prompt">$</span><span class="term-cmd">curl -X POST {{ base_url }}/v1/clearances \</span></span>
+<span class="term-line"><span class="term-cmd">    -H "<span class="term-key">X-API-Key</span>: clr_live_..." \</span></span>
+<span class="term-line"><span class="term-cmd">    -d '{"<span class="term-key">title</span>": <span class="term-str">"Book flight to Austin"</span>,</span></span>
+<span class="term-line"><span class="term-cmd">         "<span class="term-key">budget_amount</span>": <span class="term-num">450.00</span>}'</span></span>
+<span class="term-line">&nbsp;</span>
+<span class="term-line"><span class="term-comment"># → status: <span class="term-status-pending">pending</span></span></span>
+<span class="term-line"><span class="term-comment"># human taps approve_url on phone...</span></span>
+<span class="term-line">&nbsp;</span>
+<span class="term-line"><span class="term-comment"># 2. Poll for decision</span></span>
+<span class="term-line"><span class="term-prompt">$</span><span class="term-cmd">curl {{ base_url }}/v1/clearances/clr_a1b2</span></span>
+<span class="term-line">&nbsp;</span>
+<span class="term-line"><span class="term-comment"># → status: <span class="term-status-approved">approved</span></span></span>
+<span class="term-line"><span class="term-comment"># → token: eyJhbGciOiJIUzI1NiJ9...</span></span>
+<span class="term-line">&nbsp;</span>
+<span class="term-line"><span class="term-comment"># 3. Service verifies</span></span>
+<span class="term-line"><span class="term-prompt">$</span><span class="term-cmd">curl {{ base_url }}/v1/verify/eyJhbGc...</span><span class="term-cursor"></span></span>
+                </div>
             </div>
         </div>
     </div>
 </section>
 
-<!-- CODE EXAMPLE -->
+<!-- TRUST STRIP -->
+<div class="trust">
+    <div class="container">
+        <div class="trust-grid">
+            <div class="trust-item">
+                <span class="trust-glyph">JWT HS256</span>
+                <span class="trust-text">Signed approval tokens</span>
+            </div>
+            <div class="trust-item">
+                <span class="trust-glyph">Base chain</span>
+                <span class="trust-text">On-chain USDC verified</span>
+            </div>
+            <div class="trust-item">
+                <span class="trust-glyph">Stateless</span>
+                <span class="trust-text">Verify with one API call</span>
+            </div>
+            <div class="trust-item">
+                <span class="trust-glyph">&lt;200ms p50</span>
+                <span class="trust-text">Approval-page latency</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- HOW IT WORKS -->
+<section class="std" id="how">
+    <div class="container">
+        <div class="section-eyebrow">// the loop</div>
+        <h2 class="section-title">Three parties. One flow.</h2>
+        <p class="section-sub">Agent requests. Human approves. Any service verifies. No middleman holding the keys.</p>
+        <div class="steps">
+            <div class="step">
+                <div class="step-num">01 — Request</div>
+                <h3>Agent asks for clearance</h3>
+                <p>Your agent posts what it wants to do, the scope, and the budget. It gets back an approval URL instantly.</p>
+                <div class="step-snippet"><span class="m-post">POST</span> <span class="m-path">/v1/clearances</span></div>
+                <span class="step-actor actor-agent">AI Agent</span>
+            </div>
+            <div class="step">
+                <div class="step-num">02 — Approve</div>
+                <h3>Human taps yes (or no)</h3>
+                <p>The human gets a clean mobile-friendly page showing exactly what the agent wants. One tap to approve or deny.</p>
+                <div class="step-snippet"><span class="m-get">GET</span> <span class="m-path">/approve/clr_a1b2...</span></div>
+                <span class="step-actor actor-human">Human</span>
+            </div>
+            <div class="step">
+                <div class="step-num">03 — Verify</div>
+                <h3>Any service trusts the token</h3>
+                <p>The agent gets a signed JWT proving approval. Any service verifies with one API call. No auth required to verify.</p>
+                <div class="step-snippet"><span class="m-get">GET</span> <span class="m-path">/v1/verify/{token}</span></div>
+                <span class="step-actor actor-service">Any Service</span>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- CODE EXAMPLES -->
 <section class="code-section">
     <div class="container">
         <div class="code-block">
             <div class="code-tabs">
-                <button class="code-tab active" onclick="showTab('curl')">cURL</button>
-                <button class="code-tab" onclick="showTab('python')">Python</button>
-                <button class="code-tab" onclick="showTab('response')">Response</button>
+                <button class="code-tab active" onclick="showTab('curl', event)">cURL</button>
+                <button class="code-tab" onclick="showTab('python', event)">Python</button>
+                <button class="code-tab" onclick="showTab('response', event)">Response</button>
             </div>
             <div class="code-content" id="tab-curl">
 <pre><span class="comment"># Agent requests human approval</span>
@@ -1172,61 +1145,17 @@ clearance = resp.json()
     </div>
 </section>
 
-<!-- DEMO VIDEO -->
-<section style="padding: 60px 0; background: #0c0c16; border-top: 1px solid #1e1e2e; border-bottom: 1px solid #1e1e2e;">
-    <div class="container" style="text-align: center;">
-        <div style="display:inline-block; padding: 6px 16px; background: #f59e0b; color:#000; border-radius:20px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-bottom:20px;">Live Demo</div>
-        <h2 style="font-size:clamp(24px,4vw,36px); font-weight:800; color:#f8fafc; margin-bottom:12px;">See Clearance in Action</h2>
-        <p style="color:#64748b; font-size:16px; margin-bottom:32px; max-width:520px; margin-left:auto; margin-right:auto;">AI agent requests a transaction. Human approves with one tap. Agent executes. Real trade. Real money. Real approval trail.</p>
-        <div style="position:relative; max-width:720px; margin:0 auto; border-radius:16px; overflow:hidden; background:#12121c; border:1px solid #1e1e2e; aspect-ratio:16/9; display:flex; align-items:center; justify-content:center;">
-            <div style="text-align:center; padding:40px;">
-                <div style="font-size:48px; margin-bottom:16px;">▶</div>
-                <p style="color:#7e97b0; font-size:14px;">Demo video coming soon</p>
-                <p style="color:#64748b; font-size:12px; margin-top:8px;">Try it live at <a href="/" style="color:#f59e0b;">clearance.nauti-labs.com</a></p>
-            </div>
-        </div>
-        <p style="color:#64748b; font-size:13px; margin-top:16px;">First live use: Nauti-Felipe agent executed a $1 XRP trade with human-in-the-loop approval via Clearance.</p>
-    </div>
-</section>
-
-<!-- HOW IT WORKS -->
-<section class="how-section" id="how">
-    <div class="container">
-        <h2 class="section-title">Three parties. One flow.</h2>
-        <p class="section-sub">Agent requests. Human approves. Service verifies.</p>
-        <div class="steps">
-            <div class="step">
-                <div class="step-num">1</div>
-                <h3>Agent Requests Clearance</h3>
-                <p>Your AI agent calls our API with what it wants to do, the scope, and the budget. Gets back an approval URL instantly.</p>
-                <span class="actor actor-agent">AI Agent</span>
-            </div>
-            <div class="step">
-                <div class="step-num">2</div>
-                <h3>Human Approves</h3>
-                <p>The human gets a clean, mobile-friendly page showing exactly what the agent wants. One tap to approve or deny.</p>
-                <span class="actor actor-human">Human</span>
-            </div>
-            <div class="step">
-                <div class="step-num">3</div>
-                <h3>Service Verifies</h3>
-                <p>The agent receives a signed JWT token. Any service can verify it with one API call. No auth required to verify.</p>
-                <span class="actor actor-service">Any Service</span>
-            </div>
-        </div>
-    </div>
-</section>
-
 <!-- PRICING -->
-<section class="pricing-section" id="pricing">
+<section class="std" id="pricing" style="border-top: 1px solid var(--border);">
     <div class="container">
-        <h2 class="section-title">Simple pricing. Card or crypto.</h2>
-        <p class="section-sub">Start free. Scale when you need to.</p>
+        <div class="section-eyebrow">// pricing</div>
+        <h2 class="section-title">Start free. Pay when you scale.</h2>
+        <p class="section-sub">Fair limits on every tier. No credit card to start. USDC on Base when you upgrade.</p>
         <div class="pricing-grid">
             <div class="price-card">
                 <div class="price-name">Starter</div>
                 <div class="price-amount">$0</div>
-                <div class="price-desc">Forever free</div>
+                <div class="price-desc">Forever free. For real builders.</div>
                 <ul class="price-features">
                     <li>50 clearances / month</li>
                     <li>Approval pages</li>
@@ -1237,34 +1166,31 @@ clearance = resp.json()
             </div>
             <div class="price-card featured">
                 <div class="price-name">Pro</div>
-                <div class="price-amount">$19<span>/mo</span></div>
-                <div class="price-desc">For serious agents</div>
+                <div class="price-amount">$19<span class="per">/mo</span></div>
+                <div class="price-desc">For agents in production.</div>
                 <ul class="price-features">
                     <li>1,000 clearances / month</li>
                     <li>Webhook callbacks</li>
                     <li>Priority support</li>
                     <li>Custom metadata</li>
                 </ul>
-                <button class="price-btn price-btn-pay" onclick="startStripeCheckout('pro')">Pay by Card</button>
-                <button class="price-btn price-btn-free" style="margin-top:8px;" onclick="openPayment('pro', 19)">Pay with USDC</button>
+                <button class="price-btn price-btn-pay" onclick="openPayment('pro', 19)">Start USDC Checkout</button>
             </div>
             <div class="price-card">
                 <div class="price-name">Scale</div>
-                <div class="price-amount">$49<span>/mo</span></div>
-                <div class="price-desc">High-volume agents</div>
+                <div class="price-amount">$49<span class="per">/mo</span></div>
+                <div class="price-desc">High-volume. SLA backed.</div>
                 <ul class="price-features">
                     <li>10,000 clearances / month</li>
                     <li>Webhook callbacks</li>
                     <li>SLA guarantee</li>
                     <li>Bulk token ops</li>
                 </ul>
-                <button class="price-btn price-btn-pay" onclick="startStripeCheckout('scale')">Pay by Card</button>
-                <button class="price-btn price-btn-free" style="margin-top:8px;" onclick="openPayment('scale', 49)">Pay with USDC</button>
+                <button class="price-btn price-btn-pay" onclick="openPayment('scale', 49)">Start USDC Checkout</button>
             </div>
         </div>
         <p class="crypto-note">
-            Pay by card through Stripe Checkout or use <strong>USDC on Base</strong>. Other assets or networks are accepted only through
-            invoice-confirmed instructions priced to a USD-equivalent amount. Fixed-price plans verify and issue keys automatically after confirmed payment. Refunds: {{ support_email }}
+            Preferred payment is <strong>USDC on Base</strong>. Other assets or networks via invoice-confirmed instructions priced to a USD-equivalent amount. Fixed-price plans verify on-chain and issue keys automatically. Refunds: <strong>{{ support_email }}</strong>
         </p>
     </div>
 </section>
@@ -1272,10 +1198,10 @@ clearance = resp.json()
 <!-- FOR AGENTS -->
 <section class="agents-section" id="agents">
     <div class="container">
-        <div class="inner">
-            <div class="agent-badge">For AI Agents</div>
+        <div class="agents-inner">
+            <div class="agents-badge">▸ FOR AI AGENTS</div>
             <h2>Built for machines. Readable by machines.</h2>
-            <p>Full OpenAPI spec at <code>/v1/docs</code>. Every response is structured JSON. Auth via header. Stateless.</p>
+            <p class="lede">Full OpenAPI spec at <code>/v1/docs</code>. Every response is structured JSON. Auth via header. Stateless. This page itself is machine-readable — drop the URL into your agent.</p>
 
             <div class="agent-endpoint">
                 <span class="method method-post">POST</span>
@@ -1311,38 +1237,43 @@ clearance = resp.json()
     </div>
 </section>
 
+<!-- FINAL CTA -->
+<section class="final-cta">
+    <div class="container">
+        <h2>Ship safer agents <span class="accent">in 30 seconds.</span></h2>
+        <p>Free tier, no card, real production keys. Build the first integration today, scale when you actually need to.</p>
+        <button class="btn-primary" onclick="getFreeTier()" style="font-size: 15px; padding: 15px 28px;">Get Free API Key →</button>
+    </div>
+</section>
+
 <!-- FOOTER -->
 <footer>
-    <div class="container">
-        <p>Clearance &mdash; by <a href="{{ brand_url }}">Nauti-Labs</a> &mdash; Mont Belvieu, TX</p>
+    <div class="container inner">
+        <div class="footer-brand">
+            <strong>Clearance</strong> · by <a href="{{ brand_url }}">Nauti-Labs</a> · Mont Belvieu, TX
+        </div>
+        <div class="footer-links">
+            <a href="/v1/docs">API</a>
+            <a href="#how">How</a>
+            <a href="#pricing">Pricing</a>
+            <a href="mailto:{{ support_email }}">Contact</a>
+        </div>
     </div>
 </footer>
 
-    <!-- CARD CHECKOUT MODAL -->
-    <div class="modal-overlay" id="cardModal">
-        <div class="modal">
-            <button class="close-modal" onclick="closeCardCheckout()">&times;</button>
-            <h2>Card Checkout</h2>
-            <p style="color: var(--muted); font-size: 14px; margin-bottom: 20px;">Enter your email and Stripe will handle the secure checkout.</p>
-            <input class="modal-input" type="email" id="card-email" placeholder="Your email">
-            <button class="btn-primary" style="width: 100%;" onclick="continueStripeCheckout()">Continue to Stripe</button>
-            <p id="card-status" style="margin-top: 12px; font-size: 13px; text-align: center;"></p>
-        </div>
-    </div>
-
-    <!-- PAYMENT MODAL -->
+<!-- PAYMENT MODAL -->
 <div class="modal-overlay" id="paymentModal">
     <div class="modal">
         <button class="close-modal" onclick="closePayment()">&times;</button>
         <h2>USDC Checkout</h2>
-        <p style="color: var(--muted); font-size: 14px; margin-bottom: 8px;" id="modal-tier-label"></p>
+        <p class="modal-tier-label" id="modal-tier-label"></p>
         <div class="modal-amount" id="modal-amount"></div>
 
         <div class="wallet-display">
             <div class="wallet-label">Send USDC on Base to</div>
             <div class="wallet-ens" id="wallet-ens">{{ payment_ens }}</div>
             <div class="wallet-addr" id="wallet-addr">{{ payment_wallet or payment_ens }}</div>
-            <div class="wallet-networks">Base default &bull; USDC default &bull; Other assets by invoice only</div>
+            <div class="wallet-networks">Base default · USDC default · Other assets by invoice only</div>
             <ul class="wallet-summary">
                 <li><span>Recipient</span><strong id="wallet-recipient-label">{{ payment_ens }}</strong></li>
                 <li><span>Network</span><strong>Base</strong></li>
@@ -1359,8 +1290,7 @@ clearance = resp.json()
         </div>
 
         <div class="modal-help">
-            Step 1: enter your email. Step 2: send the exact amount in <strong>USDC on Base</strong>. Step 3: paste the transaction hash below to verify.
-            If you need another asset or network, email for invoice-confirmed instructions first. Fixed-price plan keys issue automatically after confirmed on-chain verification.
+            Step 1: enter your email. Step 2: send the exact amount in <strong>USDC on Base</strong>. Step 3: paste the transaction hash below to verify. If you need another asset or network, email for invoice-confirmed instructions first. Fixed-price plan keys issue automatically after confirmed on-chain verification.
         </div>
 
         <input class="modal-input" type="email" id="pay-email" placeholder="Your email (used for API key delivery and upgrades)">
@@ -1392,66 +1322,21 @@ clearance = resp.json()
 
 <script>
     // Tab switching
-    function showTab(tab) {
+    function showTab(tab, evt) {
         document.querySelectorAll('.code-content').forEach(el => el.style.display = 'none');
         document.querySelectorAll('.code-tab').forEach(el => el.classList.remove('active'));
         document.getElementById('tab-' + tab).style.display = 'block';
-        event.target.classList.add('active');
+        if (evt) { evt.target.classList.add('active'); }
     }
 
-	    // Payment modal
-	    let selectedTier = '';
-	    let selectedCardTier = '';
-	    const paymentWallet = {{ (payment_wallet or '') | tojson }};
+    // Payment modal
+    let selectedTier = '';
+    const paymentWallet = {{ (payment_wallet or '') | tojson }};
     const paymentEns = {{ (payment_ens or '') | tojson }};
     const usdcContract = {{ (usdc_contract or '') | tojson }};
     const paymentChainId = {{ payment_chain_id | tojson }};
 
-	    function startStripeCheckout(tier) {
-	        selectedCardTier = tier;
-	        document.getElementById('card-status').textContent = '';
-	        document.getElementById('cardModal').classList.add('active');
-	    }
-
-	    function closeCardCheckout() {
-	        document.getElementById('cardModal').classList.remove('active');
-	    }
-
-	    async function continueStripeCheckout() {
-	        const email = document.getElementById('card-email').value.trim();
-	        const status = document.getElementById('card-status');
-	        if (!selectedCardTier) {
-	            status.textContent = 'Choose a plan first.';
-	            status.style.color = '#ef4444';
-	            return;
-	        }
-	        if (!email) {
-	            status.textContent = 'Email required.';
-	            status.style.color = '#ef4444';
-	            return;
-	        }
-	        status.textContent = 'Starting secure checkout...';
-	        status.style.color = '#64748b';
-	        try {
-	            const res = await fetch('/v1/payments/stripe/checkout', {
-	                method: 'POST',
-	                headers: { 'Content-Type': 'application/json' },
-	                body: JSON.stringify({ email, tier: selectedCardTier })
-	            });
-	            const data = await res.json();
-	            if (data.checkout_url) {
-	                window.location.href = data.checkout_url;
-	            } else {
-	                status.textContent = data.detail || 'Card checkout is not configured yet. Use USDC or email support.';
-	                status.style.color = '#f59e0b';
-	            }
-	        } catch (err) {
-	            status.textContent = 'Network error. Try again.';
-	            status.style.color = '#ef4444';
-	        }
-	    }
-
-	    function getPaymentAtomicUnits(amount) {
+    function getPaymentAtomicUnits(amount) {
         return String(Math.round(Number(amount) * 1_000_000));
     }
 
@@ -1474,7 +1359,7 @@ clearance = resp.json()
     function openPayment(tier, amount) {
         selectedTier = tier;
         document.getElementById('pay-status').textContent = 'Enter your email, send the exact amount, then paste the transaction hash to verify.';
-        document.getElementById('pay-status').style.color = '#64748b';
+        document.getElementById('pay-status').style.color = 'var(--muted)';
         document.getElementById('pay-email').value = document.getElementById('pay-email').value.trim();
         document.getElementById('pay-tx').value = '';
         document.getElementById('modal-tier-label').textContent = tier.charAt(0).toUpperCase() + tier.slice(1) + ' Plan — Monthly';
@@ -1503,33 +1388,33 @@ clearance = resp.json()
 
     function copyWalletName() {
         navigator.clipboard.writeText(paymentEns || paymentWallet);
-        flashPayStatus('Copied payment name.', '#10b981');
+        flashPayStatus('Copied payment name.', 'var(--green)');
     }
 
     function copyWalletAddress() {
         navigator.clipboard.writeText(paymentWallet || paymentEns);
-        flashPayStatus('Copied raw wallet address.', '#10b981');
+        flashPayStatus('Copied raw wallet address.', 'var(--green)');
     }
 
     function copyPaymentRequest() {
         const amount = selectedTier === 'scale' ? 49 : 19;
         const request = buildPaymentRequestLink(amount);
         if (!request) {
-            flashPayStatus('Payment request link is unavailable. Copy the address instead.', '#f59e0b');
+            flashPayStatus('Payment request link is unavailable. Copy the address instead.', 'var(--amber)');
             return;
         }
         navigator.clipboard.writeText(request);
-        flashPayStatus('Copied wallet payment request link.', '#10b981');
+        flashPayStatus('Copied wallet payment request link.', 'var(--green)');
     }
 
     function openWalletPayment() {
         const amount = selectedTier === 'scale' ? 49 : 19;
         const request = buildPaymentRequestLink(amount);
         if (!request) {
-            flashPayStatus('Wallet deep link unavailable. Copy the address and send manually.', '#f59e0b');
+            flashPayStatus('Wallet deep link unavailable. Copy the address and send manually.', 'var(--amber)');
             return;
         }
-        flashPayStatus('Opening your wallet payment request...', '#64748b');
+        flashPayStatus('Opening your wallet payment request...', 'var(--muted)');
         window.location.href = request;
     }
 
@@ -1539,10 +1424,10 @@ clearance = resp.json()
         const name = document.getElementById('free-name').value;
         const status = document.getElementById('free-status');
 
-        if (!email) { status.textContent = 'Email required.'; status.style.color = '#ef4444'; return; }
+        if (!email) { status.textContent = 'Email required.'; status.style.color = 'var(--red)'; return; }
 
         status.textContent = 'Creating your key...';
-        status.style.color = '#64748b';
+        status.style.color = 'var(--muted)';
 
         try {
             const res = await fetch('/v1/keys', {
@@ -1555,14 +1440,14 @@ clearance = resp.json()
                 document.getElementById('free-key-value').textContent = data.api_key;
                 document.getElementById('free-key-display').style.display = 'block';
                 status.textContent = 'Key created! Save it — it won\'t be shown again.';
-                status.style.color = '#10b981';
+                status.style.color = 'var(--green)';
             } else {
                 status.textContent = data.detail || 'Error creating key.';
-                status.style.color = '#ef4444';
+                status.style.color = 'var(--red)';
             }
         } catch (err) {
             status.textContent = 'Network error. Try again.';
-            status.style.color = '#ef4444';
+            status.style.color = 'var(--red)';
         }
     }
 
@@ -1581,30 +1466,27 @@ clearance = resp.json()
 
         if (!selectedTier) {
             status.textContent = 'Choose a plan first so we know which subscription to verify.';
-            status.style.color = '#ef4444';
+            status.style.color = 'var(--red)';
             return;
         }
-
         if (!email) {
             status.textContent = 'Enter your email first so we know where to attach or deliver the key.';
-            status.style.color = '#ef4444';
+            status.style.color = 'var(--red)';
             return;
         }
-
         if (!txHash) {
             status.textContent = 'Paste the transaction hash after you send the USDC payment.';
-            status.style.color = '#ef4444';
+            status.style.color = 'var(--red)';
             return;
         }
-
         if (!txHash.startsWith('0x')) {
             status.textContent = 'Transaction hash should start with 0x.';
-            status.style.color = '#ef4444';
+            status.style.color = 'var(--red)';
             return;
         }
 
         status.textContent = 'Verifying payment on Base...';
-        status.style.color = '#64748b';
+        status.style.color = 'var(--muted)';
 
         try {
             const res = await fetch('/v1/payments/crypto', {
@@ -1614,15 +1496,15 @@ clearance = resp.json()
             });
             const data = await res.json();
             if (data.api_key) {
-                status.innerHTML = 'Payment verified! Your API key: <br><code style="color: #f59e0b;">' + data.api_key + '</code><br>Save it — won\'t be shown again.';
-                status.style.color = '#10b981';
+                status.innerHTML = 'Payment verified! Your API key: <br><code style="color: var(--amber);">' + data.api_key + '</code><br>Save it — won\'t be shown again.';
+                status.style.color = 'var(--green)';
             } else {
                 status.textContent = data.detail || data.message || 'Payment was received but not fully verified yet. Double-check the transaction hash and wait for confirmations.';
-                status.style.color = '#f59e0b';
+                status.style.color = 'var(--amber)';
             }
         } catch (err) {
             status.textContent = 'Network error. Try again.';
-            status.style.color = '#ef4444';
+            status.style.color = 'var(--red)';
         }
     }
 

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <!-- Left half of diamond, points right toward gate -->
+  <path d="M 8 50 L 42 14 L 42 86 Z" fill="currentColor"/>
+  <!-- Right half of diamond, points left toward gate -->
+  <path d="M 92 50 L 58 14 L 58 86 Z" fill="currentColor"/>
+  <!-- Vertical gap = the moment of clearance -->
+  <!-- Gap is implicit between x=42 and x=58 -->
+  <!-- Pulse marks in the gap -->
+  <circle cx="50" cy="34" r="2" fill="currentColor" opacity="0.4"/>
+  <circle cx="50" cy="50" r="2.5" fill="currentColor"/>
+  <circle cx="50" cy="66" r="2" fill="currentColor" opacity="0.4"/>
+  <!-- Top + bottom anchor lines (subtle) -->
+  <line x1="42" y1="14" x2="58" y2="14" stroke="currentColor" stroke-width="1" opacity="0.3"/>
+  <line x1="42" y1="86" x2="58" y2="86" stroke="currentColor" stroke-width="1" opacity="0.3"/>
+</svg>

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <!-- Bracket frame: industrial / mono brutalist -->
+  <path d="M 12 18 L 6 18 L 6 82 L 12 82" stroke="currentColor" stroke-width="3" stroke-linecap="square" fill="none"/>
+  <path d="M 88 18 L 94 18 L 94 82 L 88 82" stroke="currentColor" stroke-width="3" stroke-linecap="square" fill="none"/>
+  <!-- CLR — heavy mono letters -->
+  <text x="50" y="62" font-family="'JetBrains Mono', 'SF Mono', monospace" font-size="32" font-weight="800" fill="currentColor" text-anchor="middle" letter-spacing="-1">CLR</text>
+  <!-- Underline accent -->
+  <line x1="22" y1="74" x2="78" y2="74" stroke="currentColor" stroke-width="2.5"/>
+  <!-- Tiny status dot to nod to "live/cleared" -->
+  <circle cx="22" cy="28" r="2" fill="currentColor"/>
+</svg>

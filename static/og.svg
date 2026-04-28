@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <defs>
+    <linearGradient id="bg-grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1a1a20"/>
+      <stop offset="100%" stop-color="#0f0f14"/>
+    </linearGradient>
+    <radialGradient id="amber-glow" cx="0.85" cy="0.15" r="0.6">
+      <stop offset="0%" stop-color="#E8912D" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#E8912D" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="steel-glow" cx="0.1" cy="0.95" r="0.5">
+      <stop offset="0%" stop-color="#55708d" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#55708d" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#2a2a33" stroke-width="0.5" opacity="0.4"/>
+    </pattern>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#bg-grad)"/>
+  <rect width="1200" height="630" fill="url(#grid)"/>
+  <rect width="1200" height="630" fill="url(#amber-glow)"/>
+  <rect width="1200" height="630" fill="url(#steel-glow)"/>
+
+  <!-- Top-left: chevron mark + wordmark -->
+  <g transform="translate(80, 80)">
+    <!-- Chevron mark -->
+    <g transform="scale(0.7)">
+      <path d="M 18 30 L 38 50 L 18 70" stroke="#E8912D" stroke-width="11" stroke-linecap="square" stroke-linejoin="miter" opacity="0.45" fill="none"/>
+      <path d="M 40 30 L 60 50 L 40 70" stroke="#E8912D" stroke-width="11" stroke-linecap="square" stroke-linejoin="miter" opacity="0.75" fill="none"/>
+      <path d="M 62 30 L 82 50 L 62 70" stroke="#E8912D" stroke-width="11" stroke-linecap="square" stroke-linejoin="miter" fill="none"/>
+    </g>
+    <!-- Wordmark -->
+    <text x="78" y="55" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="32" font-weight="700" fill="#fafafd" letter-spacing="-0.5">Clearance</text>
+    <!-- by Nauti-Labs -->
+    <text x="218" y="55" font-family="Menlo, 'Courier New', monospace" font-size="14" font-weight="500" fill="#7a7a85" letter-spacing="0.5">// by Nauti-Labs</text>
+  </g>
+
+  <!-- Top-right: status badge -->
+  <g transform="translate(1120, 100)">
+    <text text-anchor="end" font-family="Menlo, 'Courier New', monospace" font-size="14" font-weight="600" fill="#E8912D" letter-spacing="1.5">v1 · LIVE</text>
+  </g>
+
+  <!-- Divider line under header -->
+  <line x1="80" y1="148" x2="1120" y2="148" stroke="#2a2a33" stroke-width="1"/>
+
+  <!-- Headline -->
+  <g transform="translate(80, 240)">
+    <text font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="72" font-weight="700" fill="#fafafd" letter-spacing="-2">
+      <tspan x="0" dy="0">Stop letting agents</tspan>
+      <tspan x="0" dy="84">move money </tspan>
+      <tspan font-style="italic" fill="#E8912D" font-weight="600">you didn't approve.</tspan>
+    </text>
+  </g>
+
+  <!-- Tech pills -->
+  <g transform="translate(80, 510)">
+    <!-- pill 1 -->
+    <rect x="0" y="0" width="148" height="38" rx="6" fill="#1f1f27" stroke="#2a2a33"/>
+    <text x="14" y="25" font-family="Menlo, 'Courier New', monospace" font-size="13" font-weight="600" fill="#E8912D">▸</text>
+    <text x="32" y="25" font-family="Menlo, 'Courier New', monospace" font-size="13" font-weight="500" fill="#b8b8c0">JWT HS256</text>
+
+    <rect x="164" y="0" width="206" height="38" rx="6" fill="#1f1f27" stroke="#2a2a33"/>
+    <text x="178" y="25" font-family="Menlo, 'Courier New', monospace" font-size="13" font-weight="600" fill="#E8912D">▸</text>
+    <text x="196" y="25" font-family="Menlo, 'Courier New', monospace" font-size="13" font-weight="500" fill="#b8b8c0">On-chain verified</text>
+
+    <rect x="386" y="0" width="148" height="38" rx="6" fill="#1f1f27" stroke="#2a2a33"/>
+    <text x="400" y="25" font-family="Menlo, 'Courier New', monospace" font-size="13" font-weight="600" fill="#E8912D">▸</text>
+    <text x="418" y="25" font-family="Menlo, 'Courier New', monospace" font-size="13" font-weight="500" fill="#b8b8c0">&lt;200ms p50</text>
+
+    <rect x="550" y="0" width="148" height="38" rx="6" fill="#1f1f27" stroke="#2a2a33"/>
+    <text x="564" y="25" font-family="Menlo, 'Courier New', monospace" font-size="13" font-weight="600" fill="#E8912D">▸</text>
+    <text x="582" y="25" font-family="Menlo, 'Courier New', monospace" font-size="13" font-weight="500" fill="#b8b8c0">Stateless</text>
+  </g>
+
+  <!-- Bottom-right: URL -->
+  <g transform="translate(1120, 540)">
+    <text text-anchor="end" font-family="Menlo, 'Courier New', monospace" font-size="16" font-weight="500" fill="#b8b8c0">clearance.nauti-labs.com</text>
+  </g>
+</svg>

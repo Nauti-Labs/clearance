@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Clearance — OG Card</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { background: #0f0f14; }
+        :root {
+            --amber: #E8912D;
+            --bg-1: #1a1a20;
+            --bg-2: #0f0f14;
+            --surface: #1f1f27;
+            --border: #2a2a33;
+            --text: #fafafd;
+            --dim: #b8b8c0;
+            --muted: #7a7a85;
+        }
+
+        .og {
+            width: 1200px;
+            height: 630px;
+            position: relative;
+            overflow: hidden;
+            background:
+                radial-gradient(circle at 85% 15%, rgba(232, 145, 45, 0.18) 0%, transparent 45%),
+                radial-gradient(circle at 10% 95%, rgba(85, 112, 141, 0.12) 0%, transparent 50%),
+                linear-gradient(135deg, var(--bg-1) 0%, var(--bg-2) 100%);
+            font-family: 'Inter', -apple-system, system-ui, sans-serif;
+            color: var(--text);
+        }
+        /* Grid pattern overlay */
+        .og::before {
+            content: '';
+            position: absolute; inset: 0;
+            background-image:
+                linear-gradient(rgba(42, 42, 51, 0.35) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(42, 42, 51, 0.35) 1px, transparent 1px);
+            background-size: 40px 40px;
+            opacity: 0.5;
+            pointer-events: none;
+        }
+
+        .og-padding {
+            position: relative;
+            z-index: 1;
+            padding: 70px 80px;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        /* Header */
+        .og-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .og-brand {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .chevron {
+            width: 56px; height: 56px;
+            color: var(--amber);
+            display: block;
+        }
+        .chevron svg { width: 100%; height: 100%; display: block; }
+        .wordmark {
+            font-size: 36px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            color: var(--text);
+        }
+        .by-tag {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 14px;
+            color: var(--muted);
+            letter-spacing: 0.02em;
+            margin-left: 8px;
+            border-left: 1px solid var(--border);
+            padding-left: 12px;
+        }
+        .status {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--amber);
+            letter-spacing: 0.12em;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .status-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: var(--amber);
+            box-shadow: 0 0 12px var(--amber);
+        }
+
+        .divider {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--border) 10%, var(--border) 90%, transparent);
+            margin: 24px 0 0;
+        }
+
+        /* Headline */
+        .headline {
+            font-size: 76px;
+            font-weight: 700;
+            line-height: 1.05;
+            letter-spacing: -0.035em;
+            color: var(--text);
+            max-width: 880px;
+        }
+        .headline .accent {
+            color: var(--amber);
+            font-style: italic;
+            font-weight: 600;
+        }
+
+        /* Footer */
+        .og-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+        }
+        .pills {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .pill {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--dim);
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 9px 16px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .pill .arrow { color: var(--amber); font-weight: 700; }
+        .url {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 17px;
+            font-weight: 500;
+            color: var(--dim);
+            text-align: right;
+            white-space: nowrap;
+        }
+        .url .at { color: var(--amber); }
+    </style>
+</head>
+<body>
+<div class="og">
+    <div class="og-padding">
+
+        <div>
+            <div class="og-header">
+                <div class="og-brand">
+                    <span class="chevron">
+                        <svg viewBox="0 0 100 100" fill="none">
+                            <path d="M 18 30 L 38 50 L 18 70" stroke="currentColor" stroke-width="11" stroke-linecap="square" stroke-linejoin="miter" opacity="0.45" fill="none"/>
+                            <path d="M 40 30 L 60 50 L 40 70" stroke="currentColor" stroke-width="11" stroke-linecap="square" stroke-linejoin="miter" opacity="0.75" fill="none"/>
+                            <path d="M 62 30 L 82 50 L 62 70" stroke="currentColor" stroke-width="11" stroke-linecap="square" stroke-linejoin="miter" fill="none"/>
+                        </svg>
+                    </span>
+                    <span class="wordmark">Clearance</span>
+                    <span class="by-tag">// by Nauti-Labs</span>
+                </div>
+                <div class="status">
+                    <span class="status-dot"></span>
+                    <span>v1 · LIVE</span>
+                </div>
+            </div>
+            <div class="divider"></div>
+        </div>
+
+        <div class="headline">
+            Stop letting agents move money <span class="accent">you didn't approve.</span>
+        </div>
+
+        <div class="og-footer">
+            <div class="pills">
+                <div class="pill"><span class="arrow">▸</span>JWT HS256</div>
+                <div class="pill"><span class="arrow">▸</span>On-chain verified</div>
+                <div class="pill"><span class="arrow">▸</span>&lt;200ms p50</div>
+                <div class="pill"><span class="arrow">▸</span>Stateless</div>
+            </div>
+            <div class="url"><span class="at">→</span> clearance.nauti-labs.com</div>
+        </div>
+
+    </div>
+</div>
+</body>
+</html>

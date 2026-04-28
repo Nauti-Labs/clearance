@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <defs>
+    <path id="stamp-text-path" d="M 50,50 m -38,0 a 38,38 0 1,1 76,0 a 38,38 0 1,1 -76,0" />
+  </defs>
+  <!-- Outer ring -->
+  <circle cx="50" cy="50" r="46" stroke="currentColor" stroke-width="2.5" fill="none"/>
+  <!-- Inner ring -->
+  <circle cx="50" cy="50" r="36" stroke="currentColor" stroke-width="1" fill="none" opacity="0.5"/>
+  <!-- Curved text on ring -->
+  <text font-family="'JetBrains Mono', monospace" font-size="6.5" font-weight="700" fill="currentColor" letter-spacing="1.5">
+    <textPath href="#stamp-text-path" startOffset="0%">
+      CLEARANCE · AUTHORIZED · v1 · CLEARANCE · AUTHORIZED · v1 ·
+    </textPath>
+  </text>
+  <!-- Center: bold architectural chevron-check -->
+  <path d="M 30 52 L 44 66 L 70 38" stroke="currentColor" stroke-width="6" stroke-linecap="square" stroke-linejoin="miter" fill="none"/>
+  <!-- Tick marks at compass points (subtle) -->
+  <line x1="50" y1="6" x2="50" y2="10" stroke="currentColor" stroke-width="1.5"/>
+  <line x1="50" y1="90" x2="50" y2="94" stroke="currentColor" stroke-width="1.5"/>
+  <line x1="6" y1="50" x2="10" y2="50" stroke="currentColor" stroke-width="1.5"/>
+  <line x1="90" y1="50" x2="94" y2="50" stroke="currentColor" stroke-width="1.5"/>
+</svg>

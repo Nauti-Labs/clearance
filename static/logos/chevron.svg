@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <!-- Three forward chevrons: agent → human → service -->
+  <!-- Bottom (faintest) -->
+  <path d="M 18 30 L 38 50 L 18 70" stroke="currentColor" stroke-width="9" stroke-linecap="square" stroke-linejoin="miter" opacity="0.32" fill="none"/>
+  <!-- Middle -->
+  <path d="M 40 30 L 60 50 L 40 70" stroke="currentColor" stroke-width="9" stroke-linecap="square" stroke-linejoin="miter" opacity="0.62" fill="none"/>
+  <!-- Top (full) -->
+  <path d="M 62 30 L 82 50 L 62 70" stroke="currentColor" stroke-width="9" stroke-linecap="square" stroke-linejoin="miter" fill="none"/>
+</svg>
