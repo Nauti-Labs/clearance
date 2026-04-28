@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ product_name }}</title>
+    <style>
+        :root {
+            --bg: #06111d;
+            --panel: rgba(13, 27, 42, 0.84);
+            --panel-strong: #11263b;
+            --line: rgba(174, 202, 245, 0.15);
+            --text: #f4f8fd;
+            --muted: #a6bad8;
+            --mint: #52d1a3;
+            --cyan: #3bbff0;
+            --gold: #f4c46d;
+            --coral: #ff8b74;
+            --danger: #ff6f7f;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            font-family: "Avenir Next", "Trebuchet MS", "Segoe UI", sans-serif;
+            color: var(--text);
+            background:
+                radial-gradient(circle at top left, rgba(82, 209, 163, 0.12), transparent 24%),
+                radial-gradient(circle at top right, rgba(244, 196, 109, 0.14), transparent 24%),
+                linear-gradient(180deg, #08111d 0%, #0b1727 100%);
+            min-height: 100vh;
+        }
+
+        .page {
+            width: min(1320px, calc(100% - 32px));
+            margin: 0 auto;
+            padding: 22px 0 48px;
+        }
+
+        .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+        }
+
+        .brand h1 {
+            margin: 0;
+            font-size: clamp(2rem, 4vw, 3.1rem);
+            line-height: 0.95;
+            letter-spacing: -0.04em;
+        }
+
+        .brand-wrap {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .brand-mark {
+            width: 52px;
+            height: 52px;
+            border-radius: 18px;
+        }
+
+        .brand p {
+            margin: 8px 0 0;
+            color: var(--muted);
+        }
+
+        .actions {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .chip, .status-pill, .btn {
+            border-radius: 999px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--text);
+        }
+
+        .chip, .status-pill {
+            padding: 10px 14px;
+            font-size: 14px;
+        }
+
+        .btn {
+            padding: 10px 16px;
+            cursor: pointer;
+        }
+
+        .btn.primary {
+            background: linear-gradient(135deg, var(--mint), var(--cyan));
+            color: #092233;
+            border: none;
+            font-weight: 800;
+        }
+
+        .grid {
+            display: grid;
+            gap: 18px;
+        }
+
+        .metrics {
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            margin-bottom: 18px;
+        }
+
+        .card {
+            border-radius: 26px;
+            border: 1px solid var(--line);
+            background: var(--panel);
+            backdrop-filter: blur(14px);
+            box-shadow: 0 18px 48px rgba(0, 0, 0, 0.18);
+        }
+
+        .metric {
+            padding: 20px;
+        }
+
+        .metric label {
+            display: block;
+            color: var(--muted);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .metric strong {
+            display: block;
+            margin-top: 12px;
+            font-size: 32px;
+            letter-spacing: -0.04em;
+        }
+
+        .metric span {
+            display: block;
+            margin-top: 8px;
+            color: var(--muted);
+            font-size: 14px;
+        }
+
+        .layout {
+            grid-template-columns: 1.4fr 1fr;
+            align-items: start;
+        }
+
+        .stack {
+            display: grid;
+            gap: 18px;
+        }
+
+        .card-header {
+            padding: 22px 22px 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .card-header h2, .card-header h3 {
+            margin: 0;
+            font-size: 22px;
+        }
+
+        .card-header p {
+            margin: 6px 0 0;
+            color: var(--muted);
+            font-size: 14px;
+        }
+
+        .card-body {
+            padding: 22px;
+        }
+
+        .mini-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+        }
+
+        .mini-card {
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            padding: 16px;
+        }
+
+        .mini-card small, .list small {
+            display: block;
+            color: var(--muted);
+            margin-bottom: 6px;
+        }
+
+        .list {
+            display: grid;
+            gap: 12px;
+        }
+
+        .row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 14px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .row:last-child { border-bottom: none; }
+
+        .row h4, .row p {
+            margin: 0;
+        }
+
+        .row h4 {
+            font-size: 16px;
+            margin-bottom: 4px;
+        }
+
+        .row p {
+            color: var(--muted);
+            font-size: 14px;
+        }
+
+        .amount {
+            font-weight: 800;
+            white-space: nowrap;
+        }
+
+        .amount.bad { color: var(--danger); }
+        .amount.good { color: var(--mint); }
+        .warning { color: var(--gold); }
+
+        .alert {
+            padding: 14px 16px;
+            border-radius: 18px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .alert.high { border-color: rgba(255, 111, 127, 0.45); }
+        .alert.medium { border-color: rgba(244, 196, 109, 0.45); }
+
+        .score {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 700;
+        }
+
+        .score-value {
+            font-size: 30px;
+            letter-spacing: -0.04em;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 6px 10px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.08);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .progress {
+            margin-top: 12px;
+            width: 100%;
+            height: 10px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.08);
+            overflow: hidden;
+        }
+
+        .progress > span {
+            display: block;
+            height: 100%;
+            background: linear-gradient(90deg, var(--mint), var(--gold));
+            border-radius: inherit;
+        }
+
+        form {
+            display: grid;
+            gap: 10px;
+        }
+
+        input, select, textarea {
+            width: 100%;
+            border-radius: 16px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text);
+            padding: 13px 14px;
+            font: inherit;
+        }
+
+        textarea {
+            min-height: 90px;
+            resize: vertical;
+        }
+
+        .split {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .approval-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+
+        .approval-actions .btn {
+            padding: 8px 12px;
+        }
+
+        .empty {
+            padding: 18px;
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--muted);
+        }
+
+        @media (max-width: 1180px) {
+            .metrics {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+            .layout {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 720px) {
+            .page { width: min(100% - 18px, 1320px); }
+            .metrics, .mini-grid, .split {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <div class="topbar">
+            <div class="brand brand-wrap">
+                <img class="brand-mark" src="/static/harbor-mark.svg" alt="{{ product_name }} logo">
+                <div>
+                    <h1>{{ product_name }}</h1>
+                    <p>{{ household_name }} live money board. No releases move without a human on screen.</p>
+                </div>
+            </div>
+            <div class="actions">
+                <div class="chip" id="viewer-chip">Signed in as {{ viewer.display_name }}</div>
+                <div class="status-pill" id="live-pill">Checking sync…</div>
+                <button class="btn" id="refresh-btn" type="button">Refresh now</button>
+                <button class="btn" id="logout-btn" type="button">Log out</button>
+            </div>
+        </div>
+
+        <section class="grid metrics" id="metrics"></section>
+
+        <section class="grid layout">
+            <div class="stack">
+                <article class="card">
+                    <div class="card-header">
+                        <div>
+                            <h2>Approvals Queue</h2>
+                            <p>Human-only release control. Approved payees only.</p>
+                        </div>
+                        <span class="badge" id="approval-count"></span>
+                    </div>
+                    <div class="card-body">
+                        <div class="list" id="approval-list"></div>
+                    </div>
+                </article>
+
+                <article class="card">
+                    <div class="card-header">
+                        <div>
+                            <h2>Bills and Due Dates</h2>
+                            <p>Anything late or due inside the next two weeks floats to the top.</p>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="list" id="bills-list"></div>
+                    </div>
+                </article>
+
+                <article class="card">
+                    <div class="card-header">
+                        <div>
+                            <h2>Debt Snowball</h2>
+                            <p>Smallest balances first, with buffer-aware extra payment guidance.</p>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="list" id="debts-list"></div>
+                    </div>
+                </article>
+
+                <article class="card">
+                    <div class="card-header">
+                        <div>
+                            <h2>Goals</h2>
+                            <p>Momentum for the family plan.</p>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="list" id="goals-list"></div>
+                    </div>
+                </article>
+            </div>
+
+            <div class="stack">
+                <article class="card">
+                    <div class="card-header">
+                        <div>
+                            <h3>Connected Rails</h3>
+                            <p>Bank and agent sync status.</p>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="mini-grid" id="sources-grid"></div>
+                    </div>
+                </article>
+
+                <article class="card">
+                    <div class="card-header">
+                        <div>
+                            <h3>Subscription Watch</h3>
+                            <p>Places to trim recurring spend.</p>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="list" id="subscriptions-list"></div>
+                    </div>
+                </article>
+
+                <article class="card">
+                    <div class="card-header">
+                        <div>
+                            <h3>Credit + Identity</h3>
+                            <p>Latest scores and threat alerts.</p>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="mini-grid" id="scores-grid"></div>
+                        <div class="list" id="alerts-list" style="margin-top:14px;"></div>
+                    </div>
+                </article>
+
+                <article class="card">
+                    <div class="card-header">
+                        <div>
+                            <h3>Guardrails</h3>
+                            <p>Add legit payees and queue a release for approval.</p>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="split">
+                            <form id="payee-form">
+                                <input name="name" placeholder="Approved payee name" required>
+                                <input name="category" placeholder="Category">
+                                <button class="btn primary" type="submit">Add payee</button>
+                            </form>
+                            <form id="action-form">
+                                <input name="title" placeholder="Queue title" required>
+                                <select name="payee" id="payee-select"></select>
+                                <input name="amount" placeholder="Amount" type="number" min="0" step="0.01" required>
+                                <input name="source_account" placeholder="Source account">
+                                <textarea name="human_note" placeholder="Why this release is needed"></textarea>
+                                <button class="btn primary" type="submit">Queue release</button>
+                            </form>
+                        </div>
+                        <div class="list" id="payees-list" style="margin-top:16px;"></div>
+                    </div>
+                </article>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        const initialState = {{ dashboard_json | safe }};
+        let state = initialState;
+
+        function money(value) {
+            return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value || 0);
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replaceAll('&', '&amp;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;')
+                .replaceAll('"', '&quot;')
+                .replaceAll("'", '&#39;');
+        }
+
+        function renderMetrics() {
+            const metrics = [
+                ['Total Balance', money(state.metrics.total_balance), 'All synced family accounts'],
+                ['Available Cash', money(state.metrics.available_cash), 'Checking, savings, and cash rails'],
+                ['Bills Due Soon', money(state.metrics.upcoming_bills_total), 'Needs coverage inside 14 days'],
+                ['Open Debt', money(state.metrics.open_debt_balance), 'Current balances still in payoff'],
+                ['Subscriptions', money(state.metrics.monthly_subscriptions), 'Estimated monthly recurring spend']
+            ];
+
+            document.getElementById('metrics').innerHTML = metrics.map(([label, value, note]) => `
+                <div class="card metric">
+                    <label>${label}</label>
+                    <strong>${value}</strong>
+                    <span>${note}</span>
+                </div>
+            `).join('');
+        }
+
+        function renderSources() {
+            const node = document.getElementById('sources-grid');
+            if (!state.sources.length) {
+                node.innerHTML = '<div class="empty">No sources synced yet. Post a snapshot to <code>/family/api/sync</code>.</div>';
+                return;
+            }
+
+            node.innerHTML = state.sources.map((source) => `
+                <div class="mini-card">
+                    <small>${escapeHtml(source.kind)}</small>
+                    <strong>${escapeHtml(source.name)}</strong>
+                    <div style="margin-top:8px;" class="badge">${escapeHtml(source.status || 'connected')}</div>
+                    <div style="margin-top:10px; color: var(--muted); font-size: 13px;">Last sync: ${escapeHtml(source.last_synced_at || 'pending')}</div>
+                </div>
+            `).join('');
+        }
+
+        function renderBills() {
+            const node = document.getElementById('bills-list');
+            const overdue = state.bills_overdue || [];
+            const upcoming = state.bills_due_soon || [];
+            const items = [...overdue, ...upcoming.filter((bill) => !overdue.some((late) => late.id === bill.id))];
+            if (!items.length) {
+                node.innerHTML = '<div class="empty">No due bills synced yet.</div>';
+                return;
+            }
+
+            node.innerHTML = items.map((bill) => `
+                <div class="row">
+                    <div>
+                        <h4>${escapeHtml(bill.payee)}</h4>
+                        <p>Due ${escapeHtml(bill.due_date)}${bill.debtor_account ? ` • ${escapeHtml(bill.debtor_account)}` : ''}</p>
+                    </div>
+                    <div class="amount ${state.bills_overdue.some((late) => late.id === bill.id) ? 'bad' : ''}">${money(bill.amount)}</div>
+                </div>
+            `).join('');
+        }
+
+        function renderDebts() {
+            const node = document.getElementById('debts-list');
+            if (!state.debts.length) {
+                node.innerHTML = '<div class="empty">No debt accounts synced yet.</div>';
+                return;
+            }
+
+            node.innerHTML = state.debts.map((debt, index) => `
+                <div class="row">
+                    <div>
+                        <h4>${index + 1}. ${escapeHtml(debt.creditor)}</h4>
+                        <p>Minimum ${money(debt.minimum_payment)}${debt.apr ? ` • APR ${escapeHtml(debt.apr)}%` : ''}</p>
+                    </div>
+                    <div>
+                        <div class="amount">${money(debt.balance)}</div>
+                        ${debt.recommended_extra_payment ? `<div class="warning" style="margin-top:6px;">Extra target ${money(debt.recommended_extra_payment)}</div>` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderGoals() {
+            const node = document.getElementById('goals-list');
+            if (!state.goals.length) {
+                node.innerHTML = '<div class="empty">No goals tracked yet.</div>';
+                return;
+            }
+
+            node.innerHTML = state.goals.map((goal) => `
+                <div class="mini-card">
+                    <small>${goal.target_date ? `Target ${escapeHtml(goal.target_date)}` : 'Active goal'}</small>
+                    <strong>${escapeHtml(goal.name)}</strong>
+                    <div style="margin-top:8px;">${money(goal.current_amount)} of ${money(goal.target_amount)}</div>
+                    <div class="progress"><span style="width:${Math.min(goal.progress_percent, 100)}%"></span></div>
+                </div>
+            `).join('');
+        }
+
+        function renderSubscriptions() {
+            const node = document.getElementById('subscriptions-list');
+            if (!state.subscriptions.length) {
+                node.innerHTML = '<div class="empty">No recurring spend warnings right now.</div>';
+                return;
+            }
+
+            node.innerHTML = state.subscriptions.map((subscription) => `
+                <div class="row">
+                    <div>
+                        <h4>${escapeHtml(subscription.merchant)}</h4>
+                        <p>${escapeHtml(subscription.recommendation)}</p>
+                    </div>
+                    <div class="amount">${money(subscription.monthly_cost)}</div>
+                </div>
+            `).join('');
+        }
+
+        function renderScoresAndAlerts() {
+            const scoreNode = document.getElementById('scores-grid');
+            const alertNode = document.getElementById('alerts-list');
+
+            if (!state.credit_scores.length) {
+                scoreNode.innerHTML = '<div class="empty">No scores synced yet.</div>';
+            } else {
+                scoreNode.innerHTML = state.credit_scores.map((item) => `
+                    <div class="mini-card">
+                        <small>${escapeHtml(item.person_name)} • ${escapeHtml(item.bureau)}</small>
+                        <div class="score">
+                            <span class="score-value">${escapeHtml(item.score)}</span>
+                            <span class="badge">${escapeHtml(item.label)}</span>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            if (!state.alerts.length) {
+                alertNode.innerHTML = '<div class="empty">No open alerts.</div>';
+            } else {
+                alertNode.innerHTML = state.alerts.map((alert) => `
+                    <div class="alert ${escapeHtml(alert.severity)}">
+                        <strong>${escapeHtml(alert.title)}</strong>
+                        <div style="margin-top:6px; color: var(--muted);">${escapeHtml(alert.detail || '')}</div>
+                        <div style="margin-top:8px;" class="badge">${escapeHtml(alert.updated_at_display)}</div>
+                    </div>
+                `).join('');
+            }
+        }
+
+        function renderPayees() {
+            const listNode = document.getElementById('payees-list');
+            const selectNode = document.getElementById('payee-select');
+            if (!state.approved_payees.length) {
+                listNode.innerHTML = '<div class="empty">No approved payees yet.</div>';
+                selectNode.innerHTML = '<option value="">Add a payee first</option>';
+                return;
+            }
+
+            listNode.innerHTML = state.approved_payees.map((payee) => `
+                <div class="row">
+                    <div>
+                        <h4>${escapeHtml(payee.name)}</h4>
+                        <p>${escapeHtml(payee.category || 'uncategorized')} • ${escapeHtml(payee.method || 'manual_review')}</p>
+                    </div>
+                    <span class="badge">${escapeHtml(payee.risk_level || 'verified')}</span>
+                </div>
+            `).join('');
+
+            selectNode.innerHTML = state.approved_payees.map((payee) => `
+                <option value="${escapeHtml(payee.name)}">${escapeHtml(payee.name)}</option>
+            `).join('');
+        }
+
+        function renderApprovals() {
+            const node = document.getElementById('approval-list');
+            const pendingCount = state.approval_queue.filter((item) => item.status === 'pending_human_approval').length;
+            document.getElementById('approval-count').textContent = `${pendingCount} pending`;
+
+            if (!state.approval_queue.length) {
+                node.innerHTML = '<div class="empty">No queued releases right now.</div>';
+                return;
+            }
+
+            node.innerHTML = state.approval_queue.map((item) => `
+                <div class="mini-card">
+                    <small>${escapeHtml(item.action_type)} • ${escapeHtml(item.status)}</small>
+                    <strong>${escapeHtml(item.title)}</strong>
+                    <div style="margin-top:8px;">${escapeHtml(item.payee || '')} • ${money(item.amount)}</div>
+                    <div style="margin-top:8px; color: var(--muted);">${escapeHtml(item.human_note || 'No note')}</div>
+                    ${item.status === 'pending_human_approval' ? `
+                        <div class="approval-actions">
+                            <button class="btn primary" type="button" data-action="approve" data-id="${escapeHtml(item.id)}">Approve</button>
+                            <button class="btn" type="button" data-action="deny" data-id="${escapeHtml(item.id)}">Deny</button>
+                        </div>
+                    ` : ''}
+                </div>
+            `).join('');
+
+            node.querySelectorAll('[data-action]').forEach((button) => {
+                button.addEventListener('click', () => decideAction(button.dataset.id, button.dataset.action === 'approve'));
+            });
+        }
+
+        function renderLiveState() {
+            const pill = document.getElementById('live-pill');
+            pill.textContent = state.health.is_live ? `Live • ${state.last_sync_at || 'recent'}` : 'Waiting on fresh sync';
+            pill.style.color = state.health.is_live ? 'var(--mint)' : 'var(--gold)';
+        }
+
+        function renderAll() {
+            renderMetrics();
+            renderSources();
+            renderBills();
+            renderDebts();
+            renderGoals();
+            renderSubscriptions();
+            renderScoresAndAlerts();
+            renderPayees();
+            renderApprovals();
+            renderLiveState();
+        }
+
+        async function refreshDashboard() {
+            const response = await fetch('/family/api/dashboard');
+            if (!response.ok) {
+                if (response.status === 401) {
+                    window.location.href = '/family/login';
+                    return;
+                }
+                return;
+            }
+            state = await response.json();
+            renderAll();
+        }
+
+        async function addPayee(event) {
+            event.preventDefault();
+            const form = new FormData(event.target);
+            const response = await fetch('/family/api/payees', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: form.get('name'),
+                    category: form.get('category')
+                })
+            });
+            if (response.ok) {
+                event.target.reset();
+                await refreshDashboard();
+            }
+        }
+
+        async function queueAction(event) {
+            event.preventDefault();
+            const form = new FormData(event.target);
+            const response = await fetch('/family/api/actions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action_type: 'bill_payment',
+                    title: form.get('title'),
+                    payee: form.get('payee'),
+                    amount: Number(form.get('amount')),
+                    source_account: form.get('source_account'),
+                    human_note: form.get('human_note')
+                })
+            });
+            if (response.ok) {
+                event.target.reset();
+                await refreshDashboard();
+                return;
+            }
+
+            const payload = await response.json();
+            window.alert(payload.detail || 'Unable to queue release.');
+        }
+
+        async function decideAction(actionId, approved) {
+            const response = await fetch(`/family/api/actions/${actionId}/decision`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ approved, note: approved ? 'Approved from Harbor Ledger dashboard' : 'Denied from Harbor Ledger dashboard' })
+            });
+            if (response.ok) {
+                await refreshDashboard();
+            }
+        }
+
+        async function logout() {
+            await fetch('/family/api/logout', { method: 'POST' });
+            window.location.href = '/family/login';
+        }
+
+        document.getElementById('refresh-btn').addEventListener('click', refreshDashboard);
+        document.getElementById('logout-btn').addEventListener('click', logout);
+        document.getElementById('payee-form').addEventListener('submit', addPayee);
+        document.getElementById('action-form').addEventListener('submit', queueAction);
+
+        renderAll();
+        setInterval(refreshDashboard, 5000);
+    </script>
+</body>
+</html>

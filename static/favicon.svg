@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Clearance favicon">
+  <rect width="64" height="64" rx="14" fill="#12121c"/>
+  <rect x="10" y="10" width="44" height="44" rx="10" fill="#f59e0b"/>
+  <path d="M23 33.5l6 6L42 25.5" fill="none" stroke="#12121c" stroke-linecap="round" stroke-linejoin="round" stroke-width="6"/>
+</svg>

@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clearance Request</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #08080d;
+            color: #e2e8f0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .card {
+            background: #12121c;
+            border: 1px solid #1e1e2e;
+            border-radius: 16px;
+            max-width: 480px;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        .card-header {
+            padding: 24px 28px;
+            border-bottom: 1px solid #1e1e2e;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .card-header .icon {
+            width: 40px;
+            height: 40px;
+            background: #f59e0b20;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+
+        .card-header h1 {
+            font-size: 18px;
+            font-weight: 600;
+            color: #f8fafc;
+        }
+
+        .card-header .sub {
+            font-size: 13px;
+            color: #64748b;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-pending { background: #f59e0b20; color: #f59e0b; }
+        .status-approved { background: #10b98120; color: #10b981; }
+        .status-denied { background: #ef444420; color: #ef4444; }
+        .status-expired { background: #64748b20; color: #64748b; }
+
+        .card-body { padding: 28px; }
+
+        .field {
+            margin-bottom: 20px;
+        }
+
+        .field label {
+            display: block;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #64748b;
+            margin-bottom: 6px;
+        }
+
+        .field .value {
+            font-size: 15px;
+            color: #f8fafc;
+            line-height: 1.5;
+        }
+
+        .field .value.scope {
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+            background: #1a1a2e;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            color: #f59e0b;
+        }
+
+        .budget-row {
+            display: flex;
+            align-items: baseline;
+            gap: 4px;
+        }
+
+        .budget-amount {
+            font-size: 28px;
+            font-weight: 700;
+            color: #f8fafc;
+        }
+
+        .budget-currency {
+            font-size: 16px;
+            color: #64748b;
+        }
+
+        .meta-row {
+            display: flex;
+            gap: 20px;
+            margin-top: 4px;
+        }
+
+        .meta-item {
+            font-size: 13px;
+            color: #64748b;
+        }
+
+        .note-input {
+            width: 100%;
+            background: #1a1a2e;
+            border: 1px solid #2a2a3e;
+            border-radius: 8px;
+            padding: 10px 14px;
+            color: #e2e8f0;
+            font-size: 14px;
+            font-family: inherit;
+            resize: none;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .note-input:focus { border-color: #f59e0b; }
+
+        .card-actions {
+            padding: 20px 28px 28px;
+            display: flex;
+            gap: 12px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 14px 20px;
+            border: none;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-approve {
+            background: #10b981;
+            color: #fff;
+        }
+
+        .btn-approve:hover:not(:disabled) { background: #059669; }
+
+        .btn-deny {
+            background: #1e1e2e;
+            color: #ef4444;
+            border: 1px solid #2a2a3e;
+        }
+
+        .btn-deny:hover:not(:disabled) { background: #2a2a3e; }
+
+        .result-msg {
+            text-align: center;
+            padding: 20px 28px 28px;
+            font-size: 15px;
+            font-weight: 500;
+        }
+
+        .result-msg.approved { color: #10b981; }
+        .result-msg.denied { color: #ef4444; }
+
+        .error-card {
+            text-align: center;
+            padding: 60px 28px;
+        }
+
+        .error-card .icon { font-size: 48px; margin-bottom: 16px; }
+        .error-card h2 { font-size: 20px; margin-bottom: 8px; }
+        .error-card p { color: #64748b; }
+
+        .branding {
+            text-align: center;
+            padding: 16px;
+            font-size: 11px;
+            color: #334155;
+        }
+
+        .branding a { color: #475569; text-decoration: none; }
+    </style>
+</head>
+<body>
+    {% if error %}
+    <div class="card">
+        <div class="error-card">
+            <div class="icon">&#9888;</div>
+            <h2>{{ error }}</h2>
+            <p>This clearance request could not be found or has expired.</p>
+        </div>
+    </div>
+
+    {% elif clearance.status != 'pending' %}
+    <div class="card">
+        <div class="card-header">
+            <div class="icon">&#9898;</div>
+            <div>
+                <h1>{{ clearance.title }}</h1>
+                <div class="sub">Clearance {{ clearance.id[:16] }}...</div>
+            </div>
+        </div>
+        <div class="card-body">
+            <div style="text-align:center; padding: 20px 0;">
+                <span class="status-badge status-{{ clearance.status }}">{{ clearance.status }}</span>
+                <p style="margin-top: 12px; color: #64748b; font-size: 14px;">
+                    This clearance has already been {{ clearance.status }}.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    {% else %}
+    <div class="card" id="clearance-card">
+        <div class="card-header">
+            <div class="icon">&#9889;</div>
+            <div>
+                <h1>Agent Clearance Request</h1>
+                <div class="sub">An AI agent is requesting your approval</div>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="field">
+                <label>Action Requested</label>
+                <div class="value">{{ clearance.title }}</div>
+            </div>
+
+            {% if clearance.description %}
+            <div class="field">
+                <label>Details</label>
+                <div class="value">{{ clearance.description }}</div>
+            </div>
+            {% endif %}
+
+            <div class="field">
+                <label>Scope</label>
+                <div class="value scope">{{ clearance.scope }}</div>
+            </div>
+
+            {% if clearance.budget_amount %}
+            <div class="field">
+                <label>Budget Authorized</label>
+                <div class="budget-row">
+                    <span class="budget-amount">{{ "%.2f"|format(clearance.budget_amount) }}</span>
+                    <span class="budget-currency">{{ clearance.budget_currency or 'USD' }}</span>
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="field">
+                <label>Expires</label>
+                <div class="meta-row">
+                    <span class="meta-item" id="expires-display">{{ clearance.expires_at }}</span>
+                </div>
+            </div>
+
+            <div class="field">
+                <label>Note (optional)</label>
+                <textarea class="note-input" id="note" rows="2" placeholder="Add a note for the agent..."></textarea>
+            </div>
+        </div>
+
+        <div class="card-actions" id="action-buttons">
+            <button class="btn btn-deny" onclick="decide(false)">Deny</button>
+            <button class="btn btn-approve" onclick="decide(true)">Approve</button>
+        </div>
+
+        <div class="result-msg" id="result" style="display:none;"></div>
+    </div>
+    {% endif %}
+
+    <div class="branding">
+        Secured by <a href="{{ base_url }}">Clearance</a> &mdash; Nauti-Labs
+    </div>
+
+    {% if clearance and clearance.status == 'pending' %}
+    <script>
+        // Format expiry time
+        const expiresEl = document.getElementById('expires-display');
+        try {
+            const d = new Date('{{ clearance.expires_at }}');
+            expiresEl.textContent = d.toLocaleString();
+        } catch(e) {}
+
+        async function decide(approved) {
+            const btns = document.getElementById('action-buttons');
+            const result = document.getElementById('result');
+            const note = document.getElementById('note').value;
+
+            // Disable buttons
+            btns.querySelectorAll('button').forEach(b => b.disabled = true);
+
+            try {
+                const res = await fetch('{{ base_url }}/v1/clearances/{{ clearance.id }}/decide', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ approved, note: note || null })
+                });
+
+                const data = await res.json();
+
+                btns.style.display = 'none';
+                result.style.display = 'block';
+
+                if (data.status === 'approved') {
+                    result.className = 'result-msg approved';
+                    result.innerHTML = '&#10003; Approved. The agent may proceed.';
+                } else if (data.status === 'denied') {
+                    result.className = 'result-msg denied';
+                    result.innerHTML = '&#10007; Denied. The agent has been notified.';
+                } else {
+                    result.className = 'result-msg';
+                    result.textContent = data.detail || 'Something went wrong.';
+                }
+            } catch (err) {
+                result.style.display = 'block';
+                result.className = 'result-msg denied';
+                result.textContent = 'Network error. Please try again.';
+                btns.querySelectorAll('button').forEach(b => b.disabled = false);
+            }
+        }
+    </script>
+    {% endif %}
+</body>
+</html>

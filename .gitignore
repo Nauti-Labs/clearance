@@ -1,0 +1,7 @@
+venv/
+__pycache__/
+*.pyc
+.env
+clearance.db
+*.db
+.DS_Store

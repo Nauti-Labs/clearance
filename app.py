@@ -1,0 +1,1839 @@
+"""
+Clearance by Nauti-Labs
+Human Approval API for AI Agent Commerce
+
+The missing auth layer between human intent and agent execution.
+"""
+
+import os
+import json
+import secrets
+import hashlib
+from datetime import datetime, timedelta, timezone
+from contextlib import asynccontextmanager
+from urllib.parse import quote
+
+from fastapi import FastAPI, HTTPException, Header, Request, Depends, Response
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from dotenv import load_dotenv
+
+try:
+    import stripe
+except ImportError:  # pragma: no cover - dependency is optional in minimal local runs
+    stripe = None
+
+try:
+    from jose import jwt, JWTError
+except ImportError:  # pragma: no cover - exercised in local fallback runtime
+    from jwt_compat import jwt, JWTError
+
+from database import init_db, get_db
+from crypto_verify import verify_usdc_payment
+from models import (
+    CreateClearance, ApproveAction, CreateAPIKey, RegisterWebhook,
+    ClearanceResponse, VerifyResponse, APIKeyResponse, UsageResponse,
+    ErrorResponse, ClearanceStatus, Tier,
+    FamilyLogin, FamilySyncPayload, FamilyPayeeCreate,
+    FamilyActionCreate, FamilyActionDecision,
+)
+
+load_dotenv()
+
+DEFAULT_JWT_SECRET = "dev-secret-change-in-production"
+JWT_SECRET = os.getenv("JWT_SECRET_KEY", DEFAULT_JWT_SECRET)
+JWT_ALGORITHM = "HS256"
+BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
+TOKEN_ISSUER = os.getenv("TOKEN_ISSUER", BASE_URL)
+BRAND_URL = os.getenv("BRAND_URL", "https://nauti-labs.com")
+PAYMENT_WALLET = os.getenv("PAYMENT_WALLET", "")
+PAYMENT_ENS = os.getenv("PAYMENT_ENS", "")
+PAYMENT_CHAIN = os.getenv("PAYMENT_CHAIN", "base")
+PAYMENT_CHAIN_ID = int(os.getenv("PAYMENT_CHAIN_ID", "8453"))
+PAYMENT_SUPPORT_EMAIL = os.getenv("PAYMENT_SUPPORT_EMAIL", "consulting@nauti-labs.com")
+USDC_CONTRACT = os.getenv("USDC_CONTRACT", "")
+MIN_CONFIRMATIONS = int(os.getenv("MIN_CONFIRMATIONS", "12"))
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+STRIPE_SUCCESS_URL = os.getenv("STRIPE_SUCCESS_URL", f"{BASE_URL.rstrip('/')}/?checkout=success")
+STRIPE_CANCEL_URL = os.getenv("STRIPE_CANCEL_URL", f"{BASE_URL.rstrip('/')}/?checkout=cancelled")
+FAMILY_SESSION_COOKIE = os.getenv("FAMILY_SESSION_COOKIE", "clearance_family_session")
+FAMILY_SESSION_HOURS = int(os.getenv("FAMILY_SESSION_HOURS", "18"))
+FAMILY_SYNC_TOKEN = os.getenv("FAMILY_SYNC_TOKEN", "")
+FAMILY_PRODUCT_NAME = os.getenv("FAMILY_PRODUCT_NAME", "Harbor Ledger")
+FAMILY_HOUSEHOLD_NAME = os.getenv("FAMILY_HOUSEHOLD_NAME", "LeBlanc Family")
+
+TIER_LIMITS = {
+    "starter": 50,
+    "pro": 1000,
+    "scale": 10000,
+}
+TIER_PRICES = {
+    "pro": 19,
+    "scale": 49,
+}
+FREE_KEY_SIGNUP_WINDOW_MINUTES = 60
+FREE_KEY_SIGNUP_LIMIT = 5
+
+
+def _is_local_url(url: str) -> bool:
+    return url.startswith("http://localhost") or url.startswith("http://127.0.0.1")
+
+
+def validate_runtime_config() -> None:
+    if JWT_SECRET == DEFAULT_JWT_SECRET and not _is_local_url(BASE_URL):
+        raise RuntimeError("JWT_SECRET_KEY must be set in production.")
+    if not _is_local_url(BASE_URL):
+        if not PAYMENT_WALLET:
+            raise RuntimeError("PAYMENT_WALLET must be set in production.")
+        if not PAYMENT_ENS:
+            raise RuntimeError("PAYMENT_ENS must be set in production.")
+        if not USDC_CONTRACT:
+            raise RuntimeError("USDC_CONTRACT must be set in production.")
+
+    if STRIPE_SECRET_KEY and stripe is None:
+        raise RuntimeError("STRIPE_SECRET_KEY is set but the stripe package is not installed.")
+
+
+# --- Lifespan ---
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    validate_runtime_config()
+    await init_db()
+    yield
+
+
+# --- App ---
+
+app = FastAPI(
+    title="Clearance API",
+    description="Human Approval API for AI Agent Commerce. Agents request clearance, humans approve, services verify.",
+    version="1.0.0",
+    lifespan=lifespan,
+    docs_url="/v1/docs",
+    redoc_url="/v1/redoc",
+)
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
+templates = Jinja2Templates(directory="templates")
+
+
+# --- Helpers ---
+
+def generate_id(prefix: str) -> str:
+    return f"{prefix}_{secrets.token_urlsafe(16)}"
+
+
+def hash_key(key: str) -> str:
+    return hashlib.sha256(key.encode()).hexdigest()
+
+
+def now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def get_client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def make_clearance_token(clearance_id: str, scope: str, budget_amount: float | None,
+                         budget_currency: str | None, expires_at: str) -> str:
+    payload = {
+        "clearance_id": clearance_id,
+        "scope": scope,
+        "budget_amount": budget_amount,
+        "budget_currency": budget_currency,
+        "approved_at": now_iso(),
+        "expires_at": expires_at,
+        "iss": TOKEN_ISSUER,
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+async def get_api_key(x_api_key: str = Header(..., alias="X-API-Key")) -> dict:
+    db = await get_db()
+    try:
+        key_hash = hash_key(x_api_key)
+        cursor = await db.execute(
+            "SELECT * FROM api_keys WHERE key_hash = ? AND active = 1", (key_hash,)
+        )
+        row = await cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=401, detail="Invalid or inactive API key")
+
+        # Check if credits need reset (monthly)
+        reset_at = datetime.fromisoformat(row["credits_reset_at"])
+        if datetime.now(timezone.utc) >= reset_at:
+            new_reset = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
+            limit = TIER_LIMITS.get(row["tier"], 50)
+            await db.execute(
+                "UPDATE api_keys SET credits_remaining = ?, credits_reset_at = ? WHERE id = ?",
+                (limit, new_reset, row["id"])
+            )
+            await db.commit()
+            cursor = await db.execute("SELECT * FROM api_keys WHERE id = ?", (row["id"],))
+            row = await cursor.fetchone()
+
+        return dict(row)
+    finally:
+        await db.close()
+
+
+async def fulfill_paid_tier(
+    *,
+    email: str,
+    tier: str,
+    amount: float,
+    currency: str,
+    provider: str,
+    provider_ref: str,
+    metadata: dict | None = None,
+) -> dict:
+    """Issue or upgrade a key after a payment provider has already verified funds."""
+    if tier not in TIER_PRICES:
+        raise HTTPException(status_code=400, detail=f"Invalid tier. Choose: {list(TIER_PRICES.keys())}")
+
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT id, api_key_id, tier FROM payments WHERE provider = ? AND provider_ref = ?",
+            (provider, provider_ref),
+        )
+        existing_payment = await cursor.fetchone()
+        if existing_payment:
+            return {
+                "status": "already_fulfilled",
+                "tier": existing_payment["tier"],
+                "payment_id": existing_payment["id"],
+                "message": "Payment was already fulfilled.",
+            }
+
+        payment_id = generate_id("pay")
+        key_id = generate_id("key")
+        raw_key = f"clr_live_{secrets.token_urlsafe(32)}"
+        key_h = hash_key(raw_key)
+        reset_at = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
+        credits = TIER_LIMITS.get(tier, 50)
+
+        cursor = await db.execute(
+            "SELECT id FROM api_keys WHERE email = ? AND active = 1", (email,)
+        )
+        existing_key = await cursor.fetchone()
+
+        if existing_key:
+            await db.execute(
+                "UPDATE api_keys SET tier = ?, credits_remaining = ?, credits_reset_at = ? WHERE id = ?",
+                (tier, credits, reset_at, existing_key["id"]),
+            )
+            api_key_id = existing_key["id"]
+            response = {
+                "status": "verified",
+                "message": f"Payment verified. Account upgraded to {tier}.",
+                "tier": tier,
+                "credits": credits,
+                "payment_id": payment_id,
+            }
+        else:
+            await db.execute(
+                """INSERT INTO api_keys (id, key_hash, email, tier, credits_remaining, credits_reset_at, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (key_id, key_h, email, tier, credits, reset_at, now_iso()),
+            )
+            api_key_id = key_id
+            response = {
+                "status": "verified",
+                "api_key": raw_key,
+                "tier": tier,
+                "credits": credits,
+                "payment_id": payment_id,
+                "message": "Payment verified. API key issued. Store it securely — it won't be shown again.",
+            }
+
+        await db.execute(
+            """INSERT INTO payments
+               (id, api_key_id, email, amount, currency, crypto_currency, tx_hash, status,
+                tier, provider, provider_ref, created_at, completed_at, metadata)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                payment_id,
+                api_key_id,
+                email,
+                amount,
+                currency,
+                "USDC" if provider == "base_usdc" else None,
+                provider_ref if provider == "base_usdc" else None,
+                "verified",
+                tier,
+                provider,
+                provider_ref,
+                now_iso(),
+                now_iso(),
+                json.dumps(metadata or {}),
+            ),
+        )
+        await db.execute(
+            "INSERT INTO audit_log (api_key_id, event, actor, metadata, created_at) VALUES (?, ?, ?, ?, ?)",
+            (
+                api_key_id,
+                "payment.verified",
+                email,
+                json.dumps({"provider": provider, "provider_ref": provider_ref, **(metadata or {})}),
+                now_iso(),
+            ),
+        )
+        await db.commit()
+        return response
+    finally:
+        await db.close()
+
+
+def get_family_users() -> dict[str, dict]:
+    return {
+        "justin": {
+            "display_name": "Justin",
+            "passcode": os.getenv("FAMILY_JUSTIN_PASSCODE", ""),
+            "role": "co-steward",
+        },
+        "nicole": {
+            "display_name": "Nicole",
+            "passcode": os.getenv("FAMILY_NICOLE_PASSCODE", ""),
+            "role": "co-steward",
+        },
+    }
+
+
+def _family_session_expiry() -> str:
+    return (datetime.now(timezone.utc) + timedelta(hours=FAMILY_SESSION_HOURS)).isoformat()
+
+
+def make_family_session_token(username: str, display_name: str) -> str:
+    return jwt.encode(
+        {
+            "sub": username,
+            "display_name": display_name,
+            "scope": "family.dashboard",
+            "issued_at": now_iso(),
+            "expires_at": _family_session_expiry(),
+            "iss": TOKEN_ISSUER,
+        },
+        JWT_SECRET,
+        algorithm=JWT_ALGORITHM,
+    )
+
+
+def authenticate_family_user(credentials: FamilyLogin) -> dict:
+    users = get_family_users()
+    user = users.get(credentials.username.strip().lower())
+    if not user or not user["passcode"]:
+        raise HTTPException(status_code=401, detail="Family access is not configured for this user")
+
+    if not secrets.compare_digest(credentials.passcode, user["passcode"]):
+        raise HTTPException(status_code=401, detail="Incorrect passcode")
+
+    return {
+        "username": credentials.username.strip().lower(),
+        "display_name": user["display_name"],
+        "role": user["role"],
+    }
+
+
+def decode_family_session(token: str) -> dict:
+    payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    if payload.get("scope") != "family.dashboard":
+        raise JWTError("Invalid session scope")
+    return payload
+
+
+async def get_family_user(request: Request) -> dict:
+    token = request.cookies.get(FAMILY_SESSION_COOKIE)
+    if not token:
+        auth_header = request.headers.get("authorization", "")
+        if auth_header.lower().startswith("bearer "):
+            token = auth_header.split(" ", 1)[1].strip()
+
+    if not token:
+        raise HTTPException(status_code=401, detail="Family login required")
+
+    try:
+        payload = decode_family_session(token)
+    except JWTError as exc:
+        raise HTTPException(status_code=401, detail="Invalid or expired family session") from exc
+
+    return {
+        "username": payload.get("sub"),
+        "display_name": payload.get("display_name"),
+    }
+
+
+async def require_sync_token(x_family_sync_token: str = Header(..., alias="X-Family-Sync-Token")) -> str:
+    if not FAMILY_SYNC_TOKEN:
+        raise HTTPException(status_code=503, detail="FAMILY_SYNC_TOKEN is not configured")
+    if not secrets.compare_digest(x_family_sync_token, FAMILY_SYNC_TOKEN):
+        raise HTTPException(status_code=401, detail="Invalid family sync token")
+    return x_family_sync_token
+
+
+def parse_iso_date(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        if len(value) == 10:
+            value = f"{value}T23:59:59+00:00"
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def money(value: float | None) -> float:
+    return round(float(value or 0), 2)
+
+
+def monthly_cost(amount: float, cycle: str) -> float:
+    normalized = (cycle or "monthly").lower()
+    if normalized == "weekly":
+        return amount * 52 / 12
+    if normalized == "yearly":
+        return amount / 12
+    if normalized == "quarterly":
+        return amount / 3
+    return amount
+
+
+async def _fetch_all_dicts(db, query: str, params=()) -> list[dict]:
+    cursor = await db.execute(query, params)
+    rows = await cursor.fetchall()
+    return [dict(row) for row in rows]
+
+
+def _recommend_subscription(subscription: dict) -> str | None:
+    if subscription.get("recommendation"):
+        return subscription["recommendation"]
+
+    amount = float(subscription.get("amount") or 0)
+    merchant = (subscription.get("merchant") or "").lower()
+    if amount >= 25:
+        return "High monthly cost. Confirm the household still uses this service."
+    if "ai" in merchant or "chat" in merchant:
+        return "AI spend detected. Check for overlapping tools before the next renewal."
+    return None
+
+
+def _score_alert_label(score: int) -> str:
+    if score >= 760:
+        return "excellent"
+    if score >= 700:
+        return "good"
+    if score >= 640:
+        return "watch"
+    return "urgent"
+
+
+async def build_family_dashboard() -> dict:
+    db = await get_db()
+    try:
+        accounts = await _fetch_all_dicts(
+            db,
+            "SELECT * FROM family_accounts ORDER BY updated_at DESC, institution ASC, name ASC",
+        )
+        bills = await _fetch_all_dicts(
+            db,
+            "SELECT * FROM family_bills ORDER BY due_date ASC, amount DESC",
+        )
+        debts = await _fetch_all_dicts(
+            db,
+            "SELECT * FROM family_debts WHERE status != 'closed' ORDER BY balance ASC, creditor ASC",
+        )
+        subscriptions = await _fetch_all_dicts(
+            db,
+            "SELECT * FROM family_subscriptions WHERE status = 'active' ORDER BY amount DESC, merchant ASC",
+        )
+        goals = await _fetch_all_dicts(
+            db,
+            "SELECT * FROM family_goals WHERE status = 'active' ORDER BY updated_at DESC, name ASC",
+        )
+        credit_scores = await _fetch_all_dicts(
+            db,
+            "SELECT * FROM family_credit_scores ORDER BY updated_at DESC, person_name ASC",
+        )
+        alerts = await _fetch_all_dicts(
+            db,
+            "SELECT * FROM family_alerts WHERE status = 'open' ORDER BY updated_at DESC, severity DESC",
+        )
+        payees = await _fetch_all_dicts(
+            db,
+            "SELECT * FROM approved_payees WHERE active = 1 ORDER BY name ASC",
+        )
+        actions = await _fetch_all_dicts(
+            db,
+            "SELECT * FROM family_actions ORDER BY created_at DESC",
+        )
+        sources = await _fetch_all_dicts(
+            db,
+            "SELECT * FROM family_sources ORDER BY name ASC",
+        )
+    finally:
+        await db.close()
+
+    now = datetime.now(timezone.utc)
+    next_seven_days = now + timedelta(days=7)
+    next_fourteen_days = now + timedelta(days=14)
+
+    total_balance = money(sum(float(item.get("balance") or 0) for item in accounts if item.get("status") == "active"))
+    available_cash = money(sum(float(item.get("available") if item.get("available") is not None else item.get("balance") or 0) for item in accounts if item.get("account_type") in {"checking", "savings", "cash"}))
+    upcoming_bills = []
+    overdue_bills = []
+    for bill in bills:
+        due_date = parse_iso_date(bill.get("due_date"))
+        if not due_date:
+            continue
+        if bill.get("status") in {"paid", "canceled"}:
+            continue
+        if due_date < now:
+            overdue_bills.append(bill)
+        if due_date <= next_fourteen_days:
+            upcoming_bills.append(bill)
+
+    monthly_subscriptions = money(sum(monthly_cost(float(item.get("amount") or 0), item.get("billing_cycle") or "monthly") for item in subscriptions))
+    open_debt_balance = money(sum(float(item.get("balance") or 0) for item in debts))
+    minimum_debt_payments = money(sum(float(item.get("minimum_payment") or 0) for item in debts))
+    upcoming_bills_total = money(sum(float(item.get("amount") or 0) for item in upcoming_bills))
+    overdue_total = money(sum(float(item.get("amount") or 0) for item in overdue_bills))
+
+    debt_snowball = []
+    extra_payment_cursor = available_cash - (upcoming_bills_total + minimum_debt_payments)
+    for debt in debts:
+        debt_snowball.append(
+            {
+                "creditor": debt["creditor"],
+                "balance": money(debt.get("balance")),
+                "minimum_payment": money(debt.get("minimum_payment")),
+                "apr": debt.get("apr"),
+                "recommended_extra_payment": money(max(extra_payment_cursor, 0)) if debt == debts[0] else 0,
+            }
+        )
+        extra_payment_cursor = 0
+
+    goals_summary = []
+    for goal in goals:
+        target_amount = float(goal.get("target_amount") or 0)
+        current_amount = float(goal.get("current_amount") or 0)
+        progress = round((current_amount / target_amount) * 100, 1) if target_amount else 0
+        goals_summary.append(
+            {
+                **goal,
+                "target_amount": money(target_amount),
+                "current_amount": money(current_amount),
+                "progress_percent": progress,
+            }
+        )
+
+    score_cards = []
+    latest_scores: dict[tuple[str, str], dict] = {}
+    for score in credit_scores:
+        key = (score["person_name"], score["bureau"])
+        latest_scores.setdefault(key, score)
+    for score in latest_scores.values():
+        score_cards.append(
+            {
+                **score,
+                "label": _score_alert_label(int(score["score"])),
+            }
+        )
+
+    approval_queue = []
+    for action in actions:
+        action["amount"] = money(action.get("amount"))
+        approval_queue.append(action)
+
+    active_alerts = []
+    for alert in alerts:
+        active_alerts.append(
+            {
+                **alert,
+                "updated_at_display": parse_iso_date(alert.get("updated_at")).astimezone().strftime("%b %d, %I:%M %p")
+                if parse_iso_date(alert.get("updated_at"))
+                else alert.get("updated_at"),
+            }
+        )
+
+    subscription_watch = []
+    for subscription in subscriptions:
+        recommendation = _recommend_subscription(subscription)
+        if recommendation:
+            subscription_watch.append(
+                {
+                    **subscription,
+                    "monthly_cost": money(monthly_cost(float(subscription.get("amount") or 0), subscription.get("billing_cycle") or "monthly")),
+                    "recommendation": recommendation,
+                }
+            )
+
+    last_sync_at = max(
+        [source["last_synced_at"] for source in sources if source.get("last_synced_at")] + [None],
+        key=lambda value: value or "",
+    )
+
+    return {
+        "household": FAMILY_HOUSEHOLD_NAME,
+        "product_name": FAMILY_PRODUCT_NAME,
+        "generated_at": now_iso(),
+        "metrics": {
+            "total_balance": total_balance,
+            "available_cash": available_cash,
+            "upcoming_bills_total": upcoming_bills_total,
+            "overdue_total": overdue_total,
+            "monthly_subscriptions": monthly_subscriptions,
+            "open_debt_balance": open_debt_balance,
+            "minimum_debt_payments": minimum_debt_payments,
+            "approval_queue_count": len([item for item in actions if item.get("status") == "pending_human_approval"]),
+        },
+        "sources": sources,
+        "accounts": accounts,
+        "bills_due_soon": upcoming_bills[:8],
+        "bills_overdue": overdue_bills[:8],
+        "debts": debt_snowball,
+        "goals": goals_summary,
+        "credit_scores": score_cards,
+        "alerts": active_alerts[:8],
+        "subscriptions": subscription_watch[:8],
+        "approved_payees": payees,
+        "approval_queue": approval_queue[:12],
+        "last_sync_at": last_sync_at,
+        "health": {
+            "funding_buffer": money(available_cash - upcoming_bills_total),
+            "is_live": bool(last_sync_at and parse_iso_date(last_sync_at) and parse_iso_date(last_sync_at) >= now - timedelta(minutes=5)),
+            "next_action": "Human approval required before any release"
+            if any(item.get("status") == "pending_human_approval" for item in actions)
+            else "No queued releases right now",
+        },
+    }
+
+
+async def upsert_family_snapshot(payload: FamilySyncPayload) -> dict:
+    db = await get_db()
+    now = now_iso()
+    try:
+        for source in payload.sources:
+            source_id = f"src_{source.source_key}"
+            await db.execute(
+                """INSERT INTO family_sources (id, source_key, name, kind, status, last_synced_at, metadata)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(source_key) DO UPDATE SET
+                       name = excluded.name,
+                       kind = excluded.kind,
+                       status = excluded.status,
+                       last_synced_at = excluded.last_synced_at,
+                       metadata = excluded.metadata""",
+                (
+                    source_id,
+                    source.source_key,
+                    source.name,
+                    source.kind,
+                    source.status,
+                    now,
+                    json.dumps(source.metadata) if source.metadata else None,
+                ),
+            )
+
+        for account in payload.accounts:
+            account_id = f"acct_{account.source_key}_{account.external_id}"
+            await db.execute(
+                """INSERT INTO family_accounts
+                   (id, source_key, external_id, institution, name, account_type, subtype, last4,
+                    balance, available, currency, status, is_live, updated_at, metadata)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(source_key, external_id) DO UPDATE SET
+                       institution = excluded.institution,
+                       name = excluded.name,
+                       account_type = excluded.account_type,
+                       subtype = excluded.subtype,
+                       last4 = excluded.last4,
+                       balance = excluded.balance,
+                       available = excluded.available,
+                       currency = excluded.currency,
+                       status = excluded.status,
+                       is_live = excluded.is_live,
+                       updated_at = excluded.updated_at,
+                       metadata = excluded.metadata""",
+                (
+                    account_id,
+                    account.source_key,
+                    account.external_id,
+                    account.institution,
+                    account.name,
+                    account.account_type,
+                    account.subtype,
+                    account.last4,
+                    account.balance,
+                    account.available,
+                    account.currency,
+                    account.status,
+                    int(account.is_live),
+                    now,
+                    json.dumps(account.metadata) if account.metadata else None,
+                ),
+            )
+
+        for bill in payload.bills:
+            bill_id = f"bill_{bill.source_key}_{bill.external_id}"
+            await db.execute(
+                """INSERT INTO family_bills
+                   (id, source_key, external_id, payee, category, amount, minimum_due, due_date,
+                    autopay_enabled, status, debtor_account, notes, updated_at, metadata)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(source_key, external_id) DO UPDATE SET
+                       payee = excluded.payee,
+                       category = excluded.category,
+                       amount = excluded.amount,
+                       minimum_due = excluded.minimum_due,
+                       due_date = excluded.due_date,
+                       autopay_enabled = excluded.autopay_enabled,
+                       status = excluded.status,
+                       debtor_account = excluded.debtor_account,
+                       notes = excluded.notes,
+                       updated_at = excluded.updated_at,
+                       metadata = excluded.metadata""",
+                (
+                    bill_id,
+                    bill.source_key,
+                    bill.external_id,
+                    bill.payee,
+                    bill.category,
+                    bill.amount,
+                    bill.minimum_due,
+                    bill.due_date,
+                    int(bill.autopay_enabled),
+                    bill.status,
+                    bill.debtor_account,
+                    bill.notes,
+                    now,
+                    json.dumps(bill.metadata) if bill.metadata else None,
+                ),
+            )
+
+        for debt in payload.debts:
+            debt_id = f"debt_{debt.source_key}_{debt.external_id}"
+            await db.execute(
+                """INSERT INTO family_debts
+                   (id, source_key, external_id, creditor, balance, apr, minimum_payment, due_date, status, updated_at, metadata)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(source_key, external_id) DO UPDATE SET
+                       creditor = excluded.creditor,
+                       balance = excluded.balance,
+                       apr = excluded.apr,
+                       minimum_payment = excluded.minimum_payment,
+                       due_date = excluded.due_date,
+                       status = excluded.status,
+                       updated_at = excluded.updated_at,
+                       metadata = excluded.metadata""",
+                (
+                    debt_id,
+                    debt.source_key,
+                    debt.external_id,
+                    debt.creditor,
+                    debt.balance,
+                    debt.apr,
+                    debt.minimum_payment,
+                    debt.due_date,
+                    debt.status,
+                    now,
+                    json.dumps(debt.metadata) if debt.metadata else None,
+                ),
+            )
+
+        for subscription in payload.subscriptions:
+            subscription_id = f"sub_{subscription.source_key}_{subscription.external_id}"
+            await db.execute(
+                """INSERT INTO family_subscriptions
+                   (id, source_key, external_id, merchant, amount, billing_cycle, next_charge_date, status, recommendation, updated_at, metadata)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(source_key, external_id) DO UPDATE SET
+                       merchant = excluded.merchant,
+                       amount = excluded.amount,
+                       billing_cycle = excluded.billing_cycle,
+                       next_charge_date = excluded.next_charge_date,
+                       status = excluded.status,
+                       recommendation = excluded.recommendation,
+                       updated_at = excluded.updated_at,
+                       metadata = excluded.metadata""",
+                (
+                    subscription_id,
+                    subscription.source_key,
+                    subscription.external_id,
+                    subscription.merchant,
+                    subscription.amount,
+                    subscription.billing_cycle,
+                    subscription.next_charge_date,
+                    subscription.status,
+                    subscription.recommendation,
+                    now,
+                    json.dumps(subscription.metadata) if subscription.metadata else None,
+                ),
+            )
+
+        for goal in payload.goals:
+            goal_id = f"goal_{hash_key(goal.name)[:20]}"
+            await db.execute(
+                """INSERT INTO family_goals
+                   (id, name, target_amount, current_amount, target_date, status, updated_at, metadata)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(name) DO UPDATE SET
+                       target_amount = excluded.target_amount,
+                       current_amount = excluded.current_amount,
+                       target_date = excluded.target_date,
+                       status = excluded.status,
+                       updated_at = excluded.updated_at,
+                       metadata = excluded.metadata""",
+                (
+                    goal_id,
+                    goal.name,
+                    goal.target_amount,
+                    goal.current_amount,
+                    goal.target_date,
+                    goal.status,
+                    now,
+                    json.dumps(goal.metadata) if goal.metadata else None,
+                ),
+            )
+
+        for score in payload.credit_scores:
+            score_id = f"score_{score.source_key}_{hash_key(score.person_name + score.bureau)[:16]}"
+            await db.execute(
+                """INSERT INTO family_credit_scores
+                   (id, person_name, bureau, score, source_key, updated_at, metadata)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(id) DO UPDATE SET
+                       person_name = excluded.person_name,
+                       bureau = excluded.bureau,
+                       score = excluded.score,
+                       source_key = excluded.source_key,
+                       updated_at = excluded.updated_at,
+                       metadata = excluded.metadata""",
+                (
+                    score_id,
+                    score.person_name,
+                    score.bureau,
+                    score.score,
+                    score.source_key,
+                    now,
+                    json.dumps(score.metadata) if score.metadata else None,
+                ),
+            )
+
+        for alert in payload.alerts:
+            alert_id = f"alert_{alert.source_key}_{hash_key(alert.title + alert.alert_type)[:16]}"
+            await db.execute(
+                """INSERT INTO family_alerts
+                   (id, source_key, alert_type, severity, title, detail, status, updated_at, metadata)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(id) DO UPDATE SET
+                       source_key = excluded.source_key,
+                       alert_type = excluded.alert_type,
+                       severity = excluded.severity,
+                       title = excluded.title,
+                       detail = excluded.detail,
+                       status = excluded.status,
+                       updated_at = excluded.updated_at,
+                       metadata = excluded.metadata""",
+                (
+                    alert_id,
+                    alert.source_key,
+                    alert.alert_type,
+                    alert.severity,
+                    alert.title,
+                    alert.detail,
+                    alert.status,
+                    now,
+                    json.dumps(alert.metadata) if alert.metadata else None,
+                ),
+            )
+
+        synced_sources = {item.source_key for item in payload.sources}
+        synced_sources.update(item.source_key for item in payload.accounts)
+        synced_sources.update(item.source_key for item in payload.bills)
+        synced_sources.update(item.source_key for item in payload.debts)
+        synced_sources.update(item.source_key for item in payload.subscriptions)
+        synced_sources.update(item.source_key for item in payload.credit_scores)
+        synced_sources.update(item.source_key for item in payload.alerts)
+
+        for source_key in synced_sources:
+            await db.execute(
+                """INSERT INTO family_sources (id, source_key, name, kind, status, last_synced_at, metadata)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(source_key) DO NOTHING""",
+                (
+                    f"src_{source_key}",
+                    source_key,
+                    source_key.replace("_", " ").title(),
+                    "agent_sync",
+                    "connected",
+                    now,
+                    None,
+                ),
+            )
+            await db.execute(
+                """UPDATE family_sources
+                   SET last_synced_at = ?,
+                       status = CASE
+                           WHEN status IS NULL OR status = '' OR status = 'setup_needed' THEN 'connected'
+                           ELSE status
+                       END
+                   WHERE source_key = ?""",
+                (now, source_key),
+            )
+            await db.execute(
+                """INSERT INTO family_sync_events (source_key, actor, snapshot_kind, counts, created_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (
+                    source_key,
+                    payload.actor,
+                    "family_snapshot",
+                    json.dumps(
+                        {
+                            "accounts": len(payload.accounts),
+                            "bills": len(payload.bills),
+                            "debts": len(payload.debts),
+                            "subscriptions": len(payload.subscriptions),
+                            "goals": len(payload.goals),
+                            "credit_scores": len(payload.credit_scores),
+                            "alerts": len(payload.alerts),
+                        }
+                    ),
+                    now,
+                ),
+            )
+
+        await db.commit()
+        return {
+            "status": "ok",
+            "synced_at": now,
+            "counts": {
+                "sources": len(payload.sources),
+                "accounts": len(payload.accounts),
+                "bills": len(payload.bills),
+                "debts": len(payload.debts),
+                "subscriptions": len(payload.subscriptions),
+                "goals": len(payload.goals),
+                "credit_scores": len(payload.credit_scores),
+                "alerts": len(payload.alerts),
+            },
+        }
+    finally:
+        await db.close()
+
+
+# --- API Key Management ---
+
+@app.post("/v1/keys", response_model=APIKeyResponse, tags=["Authentication"])
+async def create_api_key(body: CreateAPIKey, request: Request):
+    """Create a new API key. Starts on the free Starter tier (50 clearances/month)."""
+    db = await get_db()
+    try:
+        client_ip = get_client_ip(request)
+        user_agent = request.headers.get("user-agent")
+        cutoff = (datetime.now(timezone.utc) - timedelta(minutes=FREE_KEY_SIGNUP_WINDOW_MINUTES)).isoformat()
+
+        cursor = await db.execute(
+            "SELECT id, tier FROM api_keys WHERE email = ? AND active = 1",
+            (body.email,)
+        )
+        existing = await cursor.fetchone()
+        if existing:
+            raise HTTPException(
+                status_code=409,
+                detail="An active API key already exists for this email. Use your existing key or upgrade the same account."
+            )
+
+        cursor = await db.execute(
+            """SELECT COUNT(*) AS signup_count
+               FROM audit_log
+               WHERE event = 'key.created'
+                 AND ip = ?
+                 AND created_at >= ?""",
+            (client_ip, cutoff)
+        )
+        signup_count = (await cursor.fetchone())["signup_count"]
+        if signup_count >= FREE_KEY_SIGNUP_LIMIT:
+            raise HTTPException(
+                status_code=429,
+                detail="Too many free key signups from this IP right now. Please try again later or email support."
+            )
+
+        key_id = generate_id("key")
+        raw_key = f"clr_live_{secrets.token_urlsafe(32)}"
+        key_h = hash_key(raw_key)
+        reset_at = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
+
+        await db.execute(
+            """INSERT INTO api_keys (id, key_hash, email, name, tier, credits_remaining, credits_reset_at, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (key_id, key_h, body.email, body.name, "starter", 50, reset_at, now_iso())
+        )
+        await db.commit()
+
+        await db.execute(
+            """INSERT INTO audit_log (api_key_id, event, actor, ip, user_agent, metadata, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                key_id,
+                "key.created",
+                body.email,
+                client_ip,
+                user_agent,
+                json.dumps({"tier": "starter"}),
+                now_iso(),
+            )
+        )
+        await db.commit()
+
+        return APIKeyResponse(
+            api_key=raw_key,
+            tier=Tier.starter,
+            credits_remaining=50,
+            message="Store this key securely — it won't be shown again."
+        )
+    finally:
+        await db.close()
+
+
+# --- Clearance CRUD ---
+
+@app.post("/v1/clearances", response_model=ClearanceResponse, status_code=201, tags=["Clearances"])
+async def create_clearance(body: CreateClearance, api_key: dict = Depends(get_api_key)):
+    """
+    Create a clearance request. Returns an approval URL for a human to approve or deny.
+
+    The agent should present the approval_url to the authorizing human, then poll
+    GET /v1/clearances/{id} or listen on the callback_url for the decision.
+    """
+    if api_key["credits_remaining"] <= 0:
+        raise HTTPException(
+            status_code=402,
+            detail=f"No credits remaining. Upgrade from {api_key['tier']} tier or wait for monthly reset."
+        )
+
+    db = await get_db()
+    try:
+        clr_id = generate_id("clr")
+        created = now_iso()
+        expires = (datetime.now(timezone.utc) + timedelta(seconds=body.expires_in or 3600)).isoformat()
+        approval_url = f"{BASE_URL}/approve/{clr_id}"
+
+        await db.execute(
+            """INSERT INTO clearances
+               (id, api_key_id, title, description, scope, budget_amount, budget_currency,
+                status, approval_url, callback_url, metadata, created_at, expires_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (clr_id, api_key["id"], body.title, body.description, body.scope,
+             body.budget_amount, body.budget_currency, "pending",
+             approval_url, body.callback_url, json.dumps(body.metadata) if body.metadata else None,
+             created, expires)
+        )
+
+        # Decrement credits
+        await db.execute(
+            "UPDATE api_keys SET credits_remaining = credits_remaining - 1 WHERE id = ?",
+            (api_key["id"],)
+        )
+        await db.commit()
+
+        await db.execute(
+            "INSERT INTO audit_log (clearance_id, api_key_id, event, created_at) VALUES (?, ?, ?, ?)",
+            (clr_id, api_key["id"], "clearance.created", now_iso())
+        )
+        await db.commit()
+
+        return ClearanceResponse(
+            id=clr_id,
+            status=ClearanceStatus.pending,
+            title=body.title,
+            description=body.description,
+            scope=body.scope,
+            budget_amount=body.budget_amount,
+            budget_currency=body.budget_currency,
+            approval_url=approval_url,
+            callback_url=body.callback_url,
+            metadata=body.metadata,
+            created_at=created,
+            expires_at=expires,
+            decided_at=None,
+        )
+    finally:
+        await db.close()
+
+
+@app.get("/v1/clearances/{clearance_id}", response_model=ClearanceResponse, tags=["Clearances"])
+async def get_clearance(clearance_id: str, api_key: dict = Depends(get_api_key)):
+    """Check the status of a clearance request. Poll this until status is approved or denied."""
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT * FROM clearances WHERE id = ? AND api_key_id = ?",
+            (clearance_id, api_key["id"])
+        )
+        row = await cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Clearance not found")
+
+        row = dict(row)
+
+        # Check expiry
+        if row["status"] == "pending":
+            expires = datetime.fromisoformat(row["expires_at"])
+            if datetime.now(timezone.utc) >= expires:
+                await db.execute(
+                    "UPDATE clearances SET status = 'expired' WHERE id = ?", (clearance_id,)
+                )
+                await db.commit()
+                row["status"] = "expired"
+
+        return ClearanceResponse(
+            id=row["id"],
+            status=ClearanceStatus(row["status"]),
+            title=row["title"],
+            description=row["description"],
+            scope=row["scope"],
+            budget_amount=row["budget_amount"],
+            budget_currency=row["budget_currency"],
+            approval_url=row["approval_url"],
+            token=row["token"] if row["status"] == "approved" else None,
+            callback_url=row["callback_url"],
+            metadata=json.loads(row["metadata"]) if row["metadata"] else None,
+            created_at=row["created_at"],
+            expires_at=row["expires_at"],
+            decided_at=row["decided_at"],
+        )
+    finally:
+        await db.close()
+
+
+@app.get("/v1/clearances", tags=["Clearances"])
+async def list_clearances(
+    status: ClearanceStatus | None = None,
+    limit: int = 50,
+    api_key: dict = Depends(get_api_key)
+):
+    """List all clearances for this API key, optionally filtered by status."""
+    db = await get_db()
+    try:
+        if status:
+            cursor = await db.execute(
+                "SELECT * FROM clearances WHERE api_key_id = ? AND status = ? ORDER BY created_at DESC LIMIT ?",
+                (api_key["id"], status.value, limit)
+            )
+        else:
+            cursor = await db.execute(
+                "SELECT * FROM clearances WHERE api_key_id = ? ORDER BY created_at DESC LIMIT ?",
+                (api_key["id"], limit)
+            )
+        rows = await cursor.fetchall()
+
+        results = []
+        for row in rows:
+            row = dict(row)
+            results.append(ClearanceResponse(
+                id=row["id"],
+                status=ClearanceStatus(row["status"]),
+                title=row["title"],
+                description=row["description"],
+                scope=row["scope"],
+                budget_amount=row["budget_amount"],
+                budget_currency=row["budget_currency"],
+                approval_url=row["approval_url"],
+                token=row["token"] if row["status"] == "approved" else None,
+                callback_url=row["callback_url"],
+                metadata=json.loads(row["metadata"]) if row["metadata"] else None,
+                created_at=row["created_at"],
+                expires_at=row["expires_at"],
+                decided_at=row["decided_at"],
+            ))
+        return results
+    finally:
+        await db.close()
+
+
+# --- Human Approval ---
+
+@app.post("/v1/clearances/{clearance_id}/decide", tags=["Approval"])
+async def decide_clearance(clearance_id: str, body: ApproveAction, request: Request):
+    """Approve or deny a clearance request. Called by the human approver."""
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT * FROM clearances WHERE id = ?", (clearance_id,)
+        )
+        row = await cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Clearance not found")
+
+        row = dict(row)
+        if row["status"] != "pending":
+            raise HTTPException(status_code=409, detail=f"Clearance already {row['status']}")
+
+        # Check expiry
+        expires = datetime.fromisoformat(row["expires_at"])
+        if datetime.now(timezone.utc) >= expires:
+            await db.execute(
+                "UPDATE clearances SET status = 'expired' WHERE id = ?", (clearance_id,)
+            )
+            await db.commit()
+            raise HTTPException(status_code=410, detail="Clearance has expired")
+
+        decided_at = now_iso()
+        token = None
+
+        if body.approved:
+            new_status = "approved"
+            token = make_clearance_token(
+                clearance_id, row["scope"], row["budget_amount"],
+                row["budget_currency"], row["expires_at"]
+            )
+        else:
+            new_status = "denied"
+
+        await db.execute(
+            """UPDATE clearances SET status = ?, token = ?, decided_at = ?,
+               decision_note = ? WHERE id = ?""",
+            (new_status, token, decided_at, body.note, clearance_id)
+        )
+        await db.commit()
+
+        client_ip = request.client.host if request.client else "unknown"
+        await db.execute(
+            """INSERT INTO audit_log (clearance_id, api_key_id, event, actor, ip, user_agent, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (clearance_id, row["api_key_id"], f"clearance.{new_status}",
+             "human_approver", client_ip, request.headers.get("user-agent"), now_iso())
+        )
+        await db.commit()
+
+        # TODO: Fire webhook if callback_url is set
+
+        return {
+            "id": clearance_id,
+            "status": new_status,
+            "decided_at": decided_at,
+            "token": token,
+        }
+    finally:
+        await db.close()
+
+
+# --- Token Verification ---
+
+@app.get("/v1/verify/{token}", response_model=VerifyResponse, tags=["Verification"])
+async def verify_token(token: str):
+    """
+    Verify a clearance token. Any service can call this to confirm an agent has human approval.
+
+    No authentication required — this is a public verification endpoint.
+    Services receiving a clearance token from an agent should call this to validate it.
+    """
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+
+        # Check if clearance is still valid in DB
+        db = await get_db()
+        try:
+            cursor = await db.execute(
+                "SELECT status FROM clearances WHERE id = ?",
+                (payload.get("clearance_id"),)
+            )
+            row = await cursor.fetchone()
+            if not row or row["status"] != "approved":
+                return VerifyResponse(
+                    valid=False,
+                    error="Clearance has been revoked or is no longer active"
+                )
+        finally:
+            await db.close()
+
+        # Check expiry
+        expires = datetime.fromisoformat(payload["expires_at"])
+        if datetime.now(timezone.utc) >= expires:
+            return VerifyResponse(valid=False, error="Clearance token has expired")
+
+        return VerifyResponse(
+            valid=True,
+            clearance_id=payload.get("clearance_id"),
+            scope=payload.get("scope"),
+            budget_amount=payload.get("budget_amount"),
+            budget_currency=payload.get("budget_currency"),
+            approved_at=payload.get("approved_at"),
+            expires_at=payload.get("expires_at"),
+        )
+
+    except JWTError:
+        return VerifyResponse(valid=False, error="Invalid token signature")
+
+
+# --- Revocation ---
+
+@app.post("/v1/clearances/{clearance_id}/revoke", tags=["Clearances"])
+async def revoke_clearance(clearance_id: str, api_key: dict = Depends(get_api_key)):
+    """Revoke an approved clearance. The token will no longer verify."""
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT * FROM clearances WHERE id = ? AND api_key_id = ?",
+            (clearance_id, api_key["id"])
+        )
+        row = await cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Clearance not found")
+        if row["status"] != "approved":
+            raise HTTPException(status_code=409, detail="Can only revoke approved clearances")
+
+        await db.execute(
+            "UPDATE clearances SET status = 'revoked', token = NULL WHERE id = ?",
+            (clearance_id,)
+        )
+        await db.commit()
+
+        return {"id": clearance_id, "status": "revoked"}
+    finally:
+        await db.close()
+
+
+# --- Usage ---
+
+@app.get("/v1/usage", response_model=UsageResponse, tags=["Account"])
+async def get_usage(api_key: dict = Depends(get_api_key)):
+    """Check your current usage and remaining credits."""
+    db = await get_db()
+    try:
+        # Count clearances this period
+        cursor = await db.execute(
+            """SELECT COUNT(*) as cnt FROM clearances
+               WHERE api_key_id = ? AND created_at >= ?""",
+            (api_key["id"], (datetime.now(timezone.utc) - timedelta(days=30)).isoformat())
+        )
+        row = await cursor.fetchone()
+        used = dict(row)["cnt"]
+
+        limit = TIER_LIMITS.get(api_key["tier"], 50)
+        reset_at = api_key["credits_reset_at"]
+        period_start = (datetime.fromisoformat(reset_at) - timedelta(days=30)).isoformat()
+
+        return UsageResponse(
+            tier=Tier(api_key["tier"]),
+            credits_used=used,
+            credits_remaining=api_key["credits_remaining"],
+            clearances_this_month=used,
+            period_start=period_start,
+            period_end=reset_at,
+        )
+    finally:
+        await db.close()
+
+
+# --- Human-Facing Approval Page ---
+
+@app.get("/approve/{clearance_id}", response_class=HTMLResponse, tags=["Approval"])
+async def approval_page(clearance_id: str, request: Request):
+    """Human-facing approval page. Clean, clear, one-click approve or deny."""
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT * FROM clearances WHERE id = ?", (clearance_id,)
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return templates.TemplateResponse("approve.html", {
+                "request": request,
+                "error": "Clearance not found",
+                "clearance": None,
+            })
+
+        clearance = dict(row)
+        clearance["metadata"] = json.loads(clearance["metadata"]) if clearance["metadata"] else None
+
+        return templates.TemplateResponse("approve.html", {
+            "request": request,
+            "clearance": clearance,
+            "error": None,
+            "base_url": BASE_URL,
+        })
+    finally:
+        await db.close()
+
+
+# --- Landing Page ---
+
+@app.get("/", response_class=HTMLResponse, tags=["Pages"])
+async def landing_page(request: Request):
+    return templates.TemplateResponse(
+        "index.html",
+        {
+            "request": request,
+            "base_url": BASE_URL.rstrip("/"),
+            "brand_url": BRAND_URL.rstrip("/"),
+            "support_email": PAYMENT_SUPPORT_EMAIL,
+            "payment_ens": PAYMENT_ENS or "invoice-required",
+            "payment_wallet": PAYMENT_WALLET,
+            "payment_chain_id": PAYMENT_CHAIN_ID,
+            "usdc_contract": USDC_CONTRACT,
+        },
+    )
+
+
+@app.get("/family/login", response_class=HTMLResponse, tags=["Family"])
+async def family_login_page(request: Request):
+    try:
+        await get_family_user(request)
+        return RedirectResponse(url="/family", status_code=303)
+    except HTTPException:
+        pass
+
+    return templates.TemplateResponse(
+        "family_login.html",
+        {
+            "request": request,
+            "product_name": FAMILY_PRODUCT_NAME,
+            "household_name": FAMILY_HOUSEHOLD_NAME,
+        },
+    )
+
+
+@app.post("/family/api/login", tags=["Family"])
+async def family_login(body: FamilyLogin, response: Response):
+    user = authenticate_family_user(body)
+    token = make_family_session_token(user["username"], user["display_name"])
+    response.set_cookie(
+        FAMILY_SESSION_COOKIE,
+        token,
+        httponly=True,
+        samesite="lax",
+        secure=not _is_local_url(BASE_URL),
+        max_age=FAMILY_SESSION_HOURS * 3600,
+    )
+    return {
+        "status": "ok",
+        "viewer": user,
+        "redirect_to": "/family",
+    }
+
+
+@app.post("/family/api/logout", tags=["Family"])
+async def family_logout(response: Response):
+    response.delete_cookie(FAMILY_SESSION_COOKIE)
+    return {"status": "ok"}
+
+
+@app.get("/family", response_class=HTMLResponse, tags=["Family"])
+async def family_dashboard_page(request: Request):
+    try:
+        viewer = await get_family_user(request)
+    except HTTPException:
+        return RedirectResponse(url=f"/family/login?next={quote('/family')}", status_code=303)
+
+    dashboard = await build_family_dashboard()
+    return templates.TemplateResponse(
+        "family_dashboard.html",
+        {
+            "request": request,
+            "viewer": viewer,
+            "household_name": FAMILY_HOUSEHOLD_NAME,
+            "product_name": FAMILY_PRODUCT_NAME,
+            "dashboard_json": json.dumps({**dashboard, "viewer": viewer}),
+        },
+    )
+
+
+@app.get("/family/api/dashboard", tags=["Family"])
+async def family_dashboard_api(family_user: dict = Depends(get_family_user)):
+    dashboard = await build_family_dashboard()
+    dashboard["viewer"] = family_user
+    return dashboard
+
+
+@app.post("/family/api/sync", tags=["Family"])
+async def family_sync(payload: FamilySyncPayload, _: str = Depends(require_sync_token)):
+    return await upsert_family_snapshot(payload)
+
+
+@app.get("/family/api/payees", tags=["Family"])
+async def family_payees(_: dict = Depends(get_family_user)):
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT * FROM approved_payees WHERE active = 1 ORDER BY name ASC"
+        )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        await db.close()
+
+
+@app.post("/family/api/payees", tags=["Family"])
+async def create_family_payee(body: FamilyPayeeCreate, family_user: dict = Depends(get_family_user)):
+    db = await get_db()
+    try:
+        payee_id = f"payee_{hash_key(body.name.lower())[:20]}"
+        await db.execute(
+            """INSERT INTO approved_payees (id, name, category, method, risk_level, created_at, active)
+               VALUES (?, ?, ?, ?, ?, ?, 1)
+               ON CONFLICT(name) DO UPDATE SET
+                   category = excluded.category,
+                   method = excluded.method,
+                   risk_level = excluded.risk_level,
+                   active = 1""",
+            (payee_id, body.name.strip(), body.category, body.method, body.risk_level, now_iso()),
+        )
+        await db.execute(
+            """INSERT INTO audit_log (event, actor, metadata, created_at)
+               VALUES (?, ?, ?, ?)""",
+            (
+                "family.payee.upserted",
+                family_user["display_name"],
+                json.dumps({"payee": body.name.strip(), "category": body.category}),
+                now_iso(),
+            ),
+        )
+        await db.commit()
+        return {"status": "ok", "name": body.name.strip()}
+    finally:
+        await db.close()
+
+
+@app.post("/family/api/actions", tags=["Family"])
+async def create_family_action(body: FamilyActionCreate, family_user: dict = Depends(get_family_user)):
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT * FROM approved_payees WHERE lower(name) = lower(?) AND active = 1",
+            (body.payee.strip(),),
+        )
+        payee = await cursor.fetchone()
+        if not payee:
+            raise HTTPException(
+                status_code=400,
+                detail="Payee is not on the approved allowlist. Add it before queuing any release.",
+            )
+
+        action_id = generate_id("fam")
+        await db.execute(
+            """INSERT INTO family_actions
+               (id, action_type, title, payee, amount, currency, source_account, destination_hint,
+                status, requested_by, human_note, recommended_execution_date, created_at, metadata)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                action_id,
+                body.action_type,
+                body.title,
+                body.payee.strip(),
+                body.amount,
+                body.currency,
+                body.source_account,
+                body.destination_hint,
+                "pending_human_approval",
+                family_user["display_name"],
+                body.human_note,
+                body.recommended_execution_date,
+                now_iso(),
+                json.dumps(body.metadata) if body.metadata else None,
+            ),
+        )
+        await db.commit()
+        return {
+            "status": "queued",
+            "action_id": action_id,
+            "approval_state": "pending_human_approval",
+        }
+    finally:
+        await db.close()
+
+
+@app.post("/family/api/actions/{action_id}/decision", tags=["Family"])
+async def decide_family_action(
+    action_id: str,
+    body: FamilyActionDecision,
+    family_user: dict = Depends(get_family_user),
+):
+    db = await get_db()
+    try:
+        cursor = await db.execute("SELECT * FROM family_actions WHERE id = ?", (action_id,))
+        row = await cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Queued action not found")
+
+        action = dict(row)
+        if action["status"] != "pending_human_approval":
+            raise HTTPException(status_code=409, detail=f"Action already {action['status']}")
+
+        new_status = "approved_for_release" if body.approved else "denied_by_human"
+        await db.execute(
+            """UPDATE family_actions
+               SET status = ?, approved_by = ?, human_note = ?, decided_at = ?
+               WHERE id = ?""",
+            (
+                new_status,
+                family_user["display_name"],
+                body.note or action.get("human_note"),
+                now_iso(),
+                action_id,
+            ),
+        )
+        await db.commit()
+        return {"status": new_status, "action_id": action_id}
+    finally:
+        await db.close()
+
+
+@app.get("/robots.txt", include_in_schema=False)
+async def robots_txt():
+    return PlainTextResponse("User-agent: *\nAllow: /\n")
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return RedirectResponse(url="/static/favicon.svg")
+
+
+# --- Payments ---
+
+OTHER_ASSET_POLICY = (
+    "Other assets or networks are accepted only through invoice-confirmed instructions "
+    "priced to a USD-equivalent amount."
+)
+RELEASE_RULE = (
+    "Fixed-price plans issue keys automatically after confirmed on-chain verification. Non-default assets or custom arrangements remain manual."
+)
+
+
+@app.post("/v1/payments/crypto", tags=["Payments"])
+async def submit_crypto_payment(request: Request):
+    """
+    Submit a crypto payment for a paid tier.
+
+    REQUIREMENTS:
+    - Default crypto rail is USDC on Base using the published payment instructions
+    - Amount must be >= tier price in USDC
+    - Transaction must have 12+ confirmations
+    - Only the configured USDC token on Base is accepted on this endpoint
+    - Fixed-price keys are issued only after payment is verified on-chain
+
+    Refunds: Email support to discuss.
+    """
+    body = await request.json()
+    email = body.get("email")
+    tx_hash = body.get("tx_hash")
+    tier = body.get("tier")
+
+    if not email or not tx_hash or not tier:
+        raise HTTPException(status_code=400, detail="email, tx_hash, and tier are required")
+
+    if tier not in TIER_PRICES:
+        raise HTTPException(status_code=400, detail=f"Invalid tier. Choose: {list(TIER_PRICES.keys())}")
+
+    price = TIER_PRICES[tier]
+
+    db = await get_db()
+    try:
+        # DEFENSE: Replay attack — check for duplicate tx hash
+        cursor = await db.execute(
+            "SELECT id FROM payments WHERE tx_hash = ?", (tx_hash,)
+        )
+        if await cursor.fetchone():
+            raise HTTPException(status_code=409, detail="This transaction hash has already been used. Each payment requires a unique transaction.")
+
+        # DEFENSE: On-chain verification — ALL checks must pass before key is issued
+        verification = await verify_usdc_payment(tx_hash, price)
+
+        if not verification["verified"]:
+            # Record the failed attempt for monitoring
+            await db.execute(
+                """INSERT INTO payments (id, email, amount, currency, tx_hash, status, tier, provider, created_at, metadata)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (generate_id("pay"), email, price, "USDC", tx_hash, "rejected",
+                 tier, "base_usdc", now_iso(), json.dumps({
+                     "error": verification["error"],
+                     "confirmations": verification["confirmations"],
+                     "amount_received": verification.get("amount_usdc"),
+                 }))
+            )
+            await db.commit()
+
+            raise HTTPException(
+                status_code=402,
+                detail=verification["error"]
+            )
+
+        response = await fulfill_paid_tier(
+            email=email,
+            tier=tier,
+            amount=float(verification["amount_usdc"]),
+            currency="USDC",
+            provider="base_usdc",
+            provider_ref=tx_hash,
+            metadata={
+                "tx_hash": tx_hash,
+                "from": verification["from_address"],
+                "confirmations": verification["confirmations"],
+            },
+        )
+        response.update({
+            "amount_verified": verification["amount_usdc"],
+            "confirmations": verification["confirmations"],
+        })
+        return response
+    finally:
+        await db.close()
+
+
+@app.post("/v1/payments/stripe/checkout", tags=["Payments"])
+async def create_stripe_checkout_session(request: Request):
+    """Create a Stripe-hosted card checkout session for Pro or Scale."""
+    if not STRIPE_SECRET_KEY or stripe is None:
+        raise HTTPException(status_code=503, detail="Stripe checkout is not configured yet. Use USDC checkout or email support.")
+
+    body = await request.json()
+    tier = body.get("tier")
+    email = body.get("email")
+    if tier not in TIER_PRICES:
+        raise HTTPException(status_code=400, detail=f"Invalid tier. Choose: {list(TIER_PRICES.keys())}")
+    if not email:
+        raise HTTPException(status_code=400, detail="email is required")
+
+    stripe.api_key = STRIPE_SECRET_KEY
+    price_usd = TIER_PRICES[tier]
+    try:
+        session = stripe.checkout.Session.create(
+            mode="subscription",
+            customer_email=email,
+            client_reference_id=email,
+            success_url=STRIPE_SUCCESS_URL,
+            cancel_url=STRIPE_CANCEL_URL,
+            metadata={"email": email, "tier": tier, "product": "clearance"},
+            subscription_data={"metadata": {"email": email, "tier": tier, "product": "clearance"}},
+            line_items=[
+                {
+                    "quantity": 1,
+                    "price_data": {
+                        "currency": "usd",
+                        "unit_amount": price_usd * 100,
+                        "recurring": {"interval": "month"},
+                        "product_data": {
+                            "name": f"Clearance {tier.capitalize()}",
+                            "description": f"{TIER_LIMITS[tier]:,} human-approved clearances per month",
+                        },
+                    },
+                }
+            ],
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Unable to start Stripe checkout: {exc}") from exc
+
+    return {"checkout_url": session.url, "session_id": session.id, "tier": tier}
+
+
+@app.post("/v1/payments/stripe/webhook", tags=["Payments"])
+async def stripe_webhook(request: Request):
+    """Fulfill paid tiers from signed Stripe Checkout webhooks."""
+    if not STRIPE_WEBHOOK_SECRET or stripe is None:
+        raise HTTPException(status_code=503, detail="Stripe webhook is not configured.")
+
+    payload = await request.body()
+    sig_header = request.headers.get("stripe-signature")
+    try:
+        event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid Stripe webhook payload") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid Stripe webhook signature") from exc
+
+    if event["type"] not in ("checkout.session.completed", "checkout.session.async_payment_succeeded"):
+        return {"received": True, "ignored": event["type"]}
+
+    session = event["data"]["object"]
+    metadata = dict(session.get("metadata") or {})
+    tier = metadata.get("tier")
+    email = metadata.get("email") or session.get("customer_email")
+    customer_details = session.get("customer_details") or {}
+    email = email or customer_details.get("email")
+
+    if tier not in TIER_PRICES or not email:
+        raise HTTPException(status_code=400, detail="Stripe session is missing Clearance tier or email metadata")
+
+    amount_total = session.get("amount_total") or (TIER_PRICES[tier] * 100)
+    response = await fulfill_paid_tier(
+        email=email,
+        tier=tier,
+        amount=float(amount_total) / 100,
+        currency=(session.get("currency") or "usd").upper(),
+        provider="stripe",
+        provider_ref=session["id"],
+        metadata={
+            "stripe_customer": session.get("customer"),
+            "stripe_subscription": session.get("subscription"),
+            "stripe_payment_status": session.get("payment_status"),
+        },
+    )
+    return {"received": True, **response}
+
+
+@app.get("/v1/payments/info", tags=["Payments"])
+async def payment_info():
+    """
+    Get payment information for subscribing to a paid tier.
+    Machine-readable endpoint for AI agents to discover how to pay.
+    """
+    return {
+        "wallet": {
+            "address": PAYMENT_WALLET,
+            "ens": PAYMENT_ENS,
+            "chain": PAYMENT_CHAIN,
+            "chain_id": PAYMENT_CHAIN_ID,
+            "accepted_tokens": ["USDC"],
+            "usdc_contract": USDC_CONTRACT,
+        },
+        "checkout_policy": {
+            "default_payment_method": "Card via Stripe or USDC on Base",
+            "card_checkout": "Stripe Checkout" if STRIPE_SECRET_KEY else "not_configured",
+            "other_assets_policy": OTHER_ASSET_POLICY,
+            "pricing_rule": "Non-default payments must map to a clear USD-equivalent amount before fulfillment.",
+            "release_rule": RELEASE_RULE,
+            "supported_non_default_assets": "invoice-confirmed only",
+        },
+        "tiers": {
+            "starter": {"price_usdc": 0, "clearances_per_month": 50},
+            "pro": {"price_usdc": 19, "clearances_per_month": 1000},
+            "scale": {"price_usdc": 49, "clearances_per_month": 10000},
+        },
+        "verification": {
+            "min_confirmations": MIN_CONFIRMATIONS,
+            "method": "on-chain RPC verification",
+            "no_key_until_verified": True,
+            "manual_release_required": False,
+            "checkout_mode": "stripe_checkout_or_self_serve_usdc_on_base",
+        },
+        "instructions": "Use /v1/payments/stripe/checkout for card checkout, or send the exact USDC amount on Base chain to the published payment identity and POST to /v1/payments/crypto with email, tx_hash, and tier. Fixed-price plan keys are issued automatically once payment verification passes.",
+        "refunds": f"Email {PAYMENT_SUPPORT_EMAIL}",
+    }
+
+
+# --- Health ---
+
+@app.get("/health", tags=["System"])
+async def health():
+    return {"status": "operational", "service": "clearance", "version": "1.0.0"}
+
+
+# --- Run ---
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "app:app",
+        host="0.0.0.0",
+        port=int(os.getenv("PORT", "8000")),
+        reload=os.getenv("RELOAD", "0") == "1",
+    )
