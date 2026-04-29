@@ -994,8 +994,8 @@
                 </div>
                 <div class="hero-pills">
                     <div class="hero-pill"><span class="pill-dot">▸</span>50 free clearances/mo</div>
-                    <div class="hero-pill"><span class="pill-dot">▸</span>No credit card</div>
-                    <div class="hero-pill"><span class="pill-dot">▸</span>Pay in USDC when you scale</div>
+                    <div class="hero-pill"><span class="pill-dot">▸</span>Free to start</div>
+                    <div class="hero-pill"><span class="pill-dot">▸</span>Card · Apple Pay · USDC accepted</div>
                 </div>
             </div>
 
@@ -1150,7 +1150,7 @@ clearance = resp.json()
     <div class="container">
         <div class="section-eyebrow">// pricing</div>
         <h2 class="section-title">Start free. Pay when you scale.</h2>
-        <p class="section-sub">Fair limits on every tier. No credit card to start. USDC on Base when you upgrade.</p>
+        <p class="section-sub">Fair limits on every tier. Free to start. Upgrade with card, Apple Pay, Google Pay, Link, or USDC.</p>
         <div class="pricing-grid">
             <div class="price-card">
                 <div class="price-name">Starter</div>
@@ -1174,7 +1174,8 @@ clearance = resp.json()
                     <li>Priority support</li>
                     <li>Custom metadata</li>
                 </ul>
-                <button class="price-btn price-btn-pay" onclick="openPayment('pro', 19)">Start USDC Checkout</button>
+                <button class="price-btn price-btn-pay" onclick="startStripeCheckout('pro')">Upgrade to Pro</button>
+                <div style="margin-top:0.5rem;font-size:0.72rem;color:var(--text-muted);text-align:center;">Credit card · Apple Pay · Google Pay · Link · or <a href="#" onclick="openPayment('pro',19);return false;" style="color:var(--amber)">USDC</a></div>
             </div>
             <div class="price-card">
                 <div class="price-name">Scale</div>
@@ -1186,11 +1187,12 @@ clearance = resp.json()
                     <li>SLA guarantee</li>
                     <li>Bulk token ops</li>
                 </ul>
-                <button class="price-btn price-btn-pay" onclick="openPayment('scale', 49)">Start USDC Checkout</button>
+                <button class="price-btn price-btn-pay" onclick="startStripeCheckout('scale')">Upgrade to Scale</button>
+                <div style="margin-top:0.5rem;font-size:0.72rem;color:var(--text-muted);text-align:center;">Credit card · Apple Pay · Google Pay · Link · or <a href="#" onclick="openPayment('scale',49);return false;" style="color:var(--amber)">USDC</a></div>
             </div>
         </div>
         <p class="crypto-note">
-            Preferred payment is <strong>USDC on Base</strong>. Other assets or networks via invoice-confirmed instructions priced to a USD-equivalent amount. Fixed-price plans verify on-chain and issue keys automatically. Refunds: <strong>{{ support_email }}</strong>
+            Pay by card, Apple Pay, Google Pay, or Link via Stripe. USDC on Base also accepted — send exact amount and paste the transaction hash to verify automatically. Refunds: <strong>{{ support_email }}</strong>
         </p>
     </div>
 </section>
@@ -1367,6 +1369,27 @@ clearance = resp.json()
         document.getElementById('modal-amount').textContent = amount + ' USDC on Base';
         renderWalletRequest(amount);
         document.getElementById('paymentModal').classList.add('active');
+    }
+
+    async function startStripeCheckout(tier) {
+        const email = document.getElementById('free-email') ? document.getElementById('free-email').value.trim() : '';
+        const body = { tier };
+        if (email) body.email = email;
+        try {
+            const res = await fetch('/v1/payments/stripe/checkout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            const data = await res.json();
+            if (data.checkout_url) {
+                window.location.href = data.checkout_url;
+            } else {
+                alert('Could not start checkout. Please try again or contact ' + (paymentSupportEmail || 'support'));
+            }
+        } catch(e) {
+            alert('Checkout unavailable. Please try again.');
+        }
     }
     function closePayment() {
         document.getElementById('paymentModal').classList.remove('active');
