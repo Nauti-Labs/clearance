@@ -56,8 +56,20 @@ Add the DNS record Railway returns at the DNS host for `nauti-labs.com`.
 ## Deploy
 
 ```bash
-python3 -m pytest -q
-railway up --detach
+./scripts/deploy-production.sh
+```
+
+Do not run `railway up --detach` directly for production. The deploy script fetches
+GitHub first and refuses to deploy if this checkout is behind `origin/main`,
+diverged from it, or has uncommitted changes. That prevents an older local copy
+from replacing the live landing page.
+
+Emergency override flags exist, but use them only when everyone working on the
+site knows a hotfix is going out:
+
+```bash
+ALLOW_AHEAD_DEPLOY=1 ./scripts/deploy-production.sh
+ALLOW_DIRTY_DEPLOY=1 ./scripts/deploy-production.sh
 ```
 
 ## Stripe Setup
