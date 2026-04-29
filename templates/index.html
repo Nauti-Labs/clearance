@@ -1372,23 +1372,27 @@ clearance = resp.json()
     }
 
     async function startStripeCheckout(tier) {
-        const email = document.getElementById('free-email') ? document.getElementById('free-email').value.trim() : '';
-        const body = { tier };
-        if (email) body.email = email;
+        let email = '';
+        const emailInputs = document.querySelectorAll('input[type="email"]');
+        for (const el of emailInputs) { if (el.value.trim()) { email = el.value.trim(); break; } }
+        if (!email) {
+            email = prompt('Enter your email to continue:');
+            if (!email || !email.includes('@')) { alert('A valid email is required to checkout.'); return; }
+        }
         try {
             const res = await fetch('/v1/payments/stripe/checkout', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body)
+                body: JSON.stringify({ tier, email })
             });
             const data = await res.json();
             if (data.checkout_url) {
                 window.location.href = data.checkout_url;
             } else {
-                alert('Could not start checkout. Please try again or contact ' + (paymentSupportEmail || 'support'));
+                alert('Could not start checkout. Please try again or email consulting@nauti-labs.com');
             }
         } catch(e) {
-            alert('Checkout unavailable. Please try again.');
+            alert('Checkout unavailable. Please email consulting@nauti-labs.com to complete your purchase.');
         }
     }
     function closePayment() {
