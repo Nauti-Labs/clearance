@@ -321,6 +321,21 @@ async def init_db():
             created_at TEXT NOT NULL
         );
 
+        -- Engagement + ambassador attribution tracking
+        CREATE TABLE IF NOT EXISTS visits (
+            id TEXT PRIMARY KEY,
+            path TEXT NOT NULL,
+            ref TEXT,
+            referer TEXT,
+            utm_source TEXT,
+            utm_medium TEXT,
+            utm_campaign TEXT,
+            ip TEXT,
+            user_agent TEXT,
+            is_bot INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        );
+
         CREATE INDEX IF NOT EXISTS idx_clearances_api_key ON clearances(api_key_id);
         CREATE INDEX IF NOT EXISTS idx_clearances_status ON clearances(status);
         CREATE INDEX IF NOT EXISTS idx_audit_clearance ON audit_log(clearance_id);
@@ -330,9 +345,15 @@ async def init_db():
         CREATE INDEX IF NOT EXISTS idx_family_debts_creditor ON family_debts(creditor);
         CREATE INDEX IF NOT EXISTS idx_family_actions_status ON family_actions(status);
         CREATE INDEX IF NOT EXISTS idx_family_alerts_status ON family_alerts(status);
+        CREATE INDEX IF NOT EXISTS idx_visits_ref ON visits(ref);
+        CREATE INDEX IF NOT EXISTS idx_visits_created ON visits(created_at);
+        CREATE INDEX IF NOT EXISTS idx_visits_path ON visits(path);
     """)
 
     await _ensure_column(db, "payments", "metadata", "metadata TEXT")
+    # Ambassador attribution columns (idempotent — safe on re-init)
+    await _ensure_column(db, "api_keys", "referred_by", "referred_by TEXT")
+    await _ensure_column(db, "payments", "referred_by", "referred_by TEXT")
     await _seed_payees(db)
 
     await db.commit()

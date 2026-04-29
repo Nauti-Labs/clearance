@@ -6,6 +6,7 @@ The missing auth layer between human intent and agent execution.
 """
 
 import os
+import re
 import json
 import secrets
 import hashlib
@@ -120,6 +121,91 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 
+# --- Engagement / Ambassador attribution ---
+# Server-side click + signup attribution. Provable from the DB —
+# each click logged in `visits`, each signup tagged with `referred_by`,
+# each payment tagged with `referred_by`. Ambassadors can't dispute
+# DB rows the way they could dispute a third-party analytics dashboard.
+
+REF_COOKIE = "clearance_ref"
+REF_COOKIE_DAYS = 30
+ADMIN_KEY = os.getenv("ADMIN_KEY", "")
+_REF_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
+_BOT_RE = re.compile(r"bot|crawler|spider|preview|fetch|monitoring", re.IGNORECASE)
+
+
+def _validate_ref(value):
+    """Sanitize ambassador / ref names. Returns canonicalized lowercase name or None."""
+    if not value:
+        return None
+    s = str(value).strip()
+    if not _REF_RE.match(s):
+        return None
+    return s.lower()
+
+
+def _is_bot_ua(ua: str) -> bool:
+    return bool(ua) and bool(_BOT_RE.search(ua))
+
+
+async def _record_visit(request: "Request", ref):
+    """Persist a single page-visit row. Best-effort: never raises."""
+    try:
+        from database import get_db as _get_db_visits
+        db = await _get_db_visits()
+        try:
+            qp = request.query_params
+            ua = (request.headers.get("user-agent") or "")[:512]
+            await db.execute(
+                """INSERT INTO visits
+                   (id, path, ref, referer, utm_source, utm_medium, utm_campaign,
+                    ip, user_agent, is_bot, created_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    secrets.token_urlsafe(12),
+                    request.url.path,
+                    ref,
+                    (request.headers.get("referer") or "")[:512],
+                    qp.get("utm_source"),
+                    qp.get("utm_medium"),
+                    qp.get("utm_campaign"),
+                    request.client.host if request.client else None,
+                    ua,
+                    1 if _is_bot_ua(ua) else 0,
+                    datetime.now(timezone.utc).isoformat(),
+                ),
+            )
+            await db.commit()
+        finally:
+            await db.close()
+    except Exception:
+        # never let analytics break the page
+        pass
+
+
+def _set_ref_cookie(response, ref: str):
+    response.set_cookie(
+        key=REF_COOKIE,
+        value=ref,
+        max_age=REF_COOKIE_DAYS * 86400,
+        httponly=False,  # allow client-side debugging; not a security boundary
+        samesite="lax",
+        secure=True,
+        path="/",
+    )
+
+
+def _read_ref_cookie(request: "Request"):
+    return _validate_ref(request.cookies.get(REF_COOKIE))
+
+
+def _require_admin(x_admin_key):
+    if not ADMIN_KEY:
+        raise HTTPException(status_code=503, detail="ADMIN_KEY env var not set on server.")
+    if not x_admin_key or x_admin_key != ADMIN_KEY:
+        raise HTTPException(status_code=401, detail="invalid admin key")
+
+
 # --- Helpers ---
 
 def generate_id(prefix: str) -> str:
@@ -193,6 +279,7 @@ async def fulfill_paid_tier(
     provider: str,
     provider_ref: str,
     metadata: dict | None = None,
+    referred_by: str | None = None,
 ) -> dict:
     """Issue or upgrade a key after a payment provider has already verified funds."""
     if tier not in TIER_PRICES:
@@ -240,9 +327,9 @@ async def fulfill_paid_tier(
             }
         else:
             await db.execute(
-                """INSERT INTO api_keys (id, key_hash, email, tier, credits_remaining, credits_reset_at, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (key_id, key_h, email, tier, credits, reset_at, now_iso()),
+                """INSERT INTO api_keys (id, key_hash, email, tier, credits_remaining, credits_reset_at, created_at, referred_by)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (key_id, key_h, email, tier, credits, reset_at, now_iso(), _validate_ref(referred_by)),
             )
             api_key_id = key_id
             response = {
@@ -257,8 +344,8 @@ async def fulfill_paid_tier(
         await db.execute(
             """INSERT INTO payments
                (id, api_key_id, email, amount, currency, crypto_currency, tx_hash, status,
-                tier, provider, provider_ref, created_at, completed_at, metadata)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                tier, provider, provider_ref, created_at, completed_at, metadata, referred_by)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 payment_id,
                 api_key_id,
@@ -274,6 +361,7 @@ async def fulfill_paid_tier(
                 now_iso(),
                 now_iso(),
                 json.dumps(metadata or {}),
+                _validate_ref(referred_by),
             ),
         )
         await db.execute(
@@ -972,10 +1060,13 @@ async def create_api_key(body: CreateAPIKey, request: Request):
         key_h = hash_key(raw_key)
         reset_at = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
 
+        # Ambassador attribution: read the visit cookie set by /r/{name} or ?ref=.
+        ref = _read_ref_cookie(request)
+
         await db.execute(
-            """INSERT INTO api_keys (id, key_hash, email, name, tier, credits_remaining, credits_reset_at, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (key_id, key_h, body.email, body.name, "starter", 50, reset_at, now_iso())
+            """INSERT INTO api_keys (id, key_hash, email, name, tier, credits_remaining, credits_reset_at, created_at, referred_by)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (key_id, key_h, body.email, body.name, "starter", 50, reset_at, now_iso(), ref)
         )
         await db.commit()
 
@@ -988,7 +1079,7 @@ async def create_api_key(body: CreateAPIKey, request: Request):
                 body.email,
                 client_ip,
                 user_agent,
-                json.dumps({"tier": "starter"}),
+                json.dumps({"tier": "starter", "referred_by": ref}),
                 now_iso(),
             )
         )
@@ -1370,7 +1461,16 @@ async def approval_page(clearance_id: str, request: Request):
 
 @app.get("/", response_class=HTMLResponse, tags=["Pages"])
 async def landing_page(request: Request):
-    return templates.TemplateResponse(
+    # Resolve ref: explicit ?ref= wins, else ?utm_source=, else existing cookie.
+    ref = (
+        _validate_ref(request.query_params.get("ref"))
+        or _validate_ref(request.query_params.get("utm_source"))
+        or _read_ref_cookie(request)
+    )
+    # Log the visit (server-side, provable receipt)
+    await _record_visit(request, ref)
+
+    response = templates.TemplateResponse(
         "index.html",
         {
             "request": request,
@@ -1383,6 +1483,101 @@ async def landing_page(request: Request):
             "usdc_contract": USDC_CONTRACT,
         },
     )
+    if ref:
+        _set_ref_cookie(response, ref)
+    return response
+
+
+@app.get("/r/{ambassador}", tags=["Pages"], include_in_schema=False)
+async def ambassador_redirect(ambassador: str, request: Request):
+    """Pretty ambassador URL — sets ref cookie and 302s to landing.
+
+    Usage: send ambassadors links like https://clearance.nauti-labs.com/r/alice
+    """
+    ref = _validate_ref(ambassador)
+    if not ref:
+        return RedirectResponse(url="/", status_code=302)
+    await _record_visit(request, ref)
+    response = RedirectResponse(url="/", status_code=302)
+    _set_ref_cookie(response, ref)
+    return response
+
+
+# --- Admin: ambassador attribution stats (provable from DB) ---
+
+@app.get("/v1/admin/ambassadors", tags=["Admin"])
+async def list_ambassadors(x_admin_key: str = Header(None, alias="X-Admin-Key")):
+    """List every ambassador with click + signup totals. Admin-key gated."""
+    _require_admin(x_admin_key)
+    db = await get_db()
+    try:
+        cur = await db.execute("""
+            SELECT
+                COALESCE(v.ref, k.referred_by) AS ref,
+                SUM(CASE WHEN v.id IS NOT NULL AND v.is_bot = 0 THEN 1 ELSE 0 END) AS clicks,
+                COUNT(DISTINCT k.id) AS signups
+            FROM visits v
+            LEFT JOIN api_keys k ON k.referred_by = v.ref
+            WHERE v.ref IS NOT NULL OR k.referred_by IS NOT NULL
+            GROUP BY ref
+            ORDER BY clicks DESC, signups DESC
+        """)
+        rows = [dict(r) for r in await cur.fetchall()]
+        return {"ambassadors": rows, "count": len(rows)}
+    finally:
+        await db.close()
+
+
+@app.get("/v1/admin/ambassadors/{name}", tags=["Admin"])
+async def ambassador_stats(name: str, x_admin_key: str = Header(None, alias="X-Admin-Key")):
+    """Detailed stats for one ambassador. Provable from DB rows."""
+    _require_admin(x_admin_key)
+    ref = _validate_ref(name)
+    if not ref:
+        raise HTTPException(status_code=400, detail="invalid ambassador name (a-z, 0-9, _ -)")
+    db = await get_db()
+    try:
+        click_total = (await (await db.execute(
+            "SELECT COUNT(*) AS n FROM visits WHERE ref = ? AND is_bot = 0", (ref,)
+        )).fetchone())["n"]
+        click_bots = (await (await db.execute(
+            "SELECT COUNT(*) AS n FROM visits WHERE ref = ? AND is_bot = 1", (ref,)
+        )).fetchone())["n"]
+        first_click = (await (await db.execute(
+            "SELECT MIN(created_at) AS t FROM visits WHERE ref = ?", (ref,)
+        )).fetchone())["t"]
+        last_click = (await (await db.execute(
+            "SELECT MAX(created_at) AS t FROM visits WHERE ref = ?", (ref,)
+        )).fetchone())["t"]
+        signups = (await (await db.execute(
+            "SELECT COUNT(*) AS n FROM api_keys WHERE referred_by = ?", (ref,)
+        )).fetchone())["n"]
+        signup_emails = [r["email"] for r in await (await db.execute(
+            "SELECT email FROM api_keys WHERE referred_by = ? ORDER BY created_at DESC LIMIT 50", (ref,)
+        )).fetchall()]
+        paid = (await (await db.execute(
+            "SELECT COUNT(*) AS n FROM payments WHERE referred_by = ? AND status = 'verified'", (ref,)
+        )).fetchone())["n"]
+        paid_revenue = (await (await db.execute(
+            "SELECT COALESCE(SUM(amount), 0) AS r FROM payments WHERE referred_by = ? AND status = 'verified'", (ref,)
+        )).fetchone())["r"]
+
+        cvr = round((signups / click_total * 100), 2) if click_total else 0.0
+        return {
+            "ambassador": ref,
+            "tracked_link": f"{BASE_URL.rstrip('/')}/r/{ref}",
+            "clicks": click_total,
+            "bot_clicks_excluded": click_bots,
+            "signups": signups,
+            "paid_conversions": paid,
+            "paid_revenue_usd": float(paid_revenue),
+            "click_to_signup_rate_pct": cvr,
+            "first_click_at": first_click,
+            "last_click_at": last_click,
+            "signup_emails_sample": signup_emails,
+        }
+    finally:
+        await db.close()
 
 
 @app.get("/family/login", response_class=HTMLResponse, tags=["Family"])
@@ -1705,6 +1900,10 @@ async def create_stripe_checkout_session(request: Request):
 
     stripe.api_key = STRIPE_SECRET_KEY
     price_usd = TIER_PRICES[tier]
+    # Carry ambassador attribution through Stripe metadata so the webhook
+    # can persist `referred_by` on the payments row when checkout completes.
+    ref = _read_ref_cookie(request) or ""
+    base_metadata = {"email": email, "tier": tier, "product": "clearance", "ref": ref}
     try:
         session = stripe.checkout.Session.create(
             mode="subscription",
@@ -1712,8 +1911,8 @@ async def create_stripe_checkout_session(request: Request):
             client_reference_id=email,
             success_url=STRIPE_SUCCESS_URL,
             cancel_url=STRIPE_CANCEL_URL,
-            metadata={"email": email, "tier": tier, "product": "clearance"},
-            subscription_data={"metadata": {"email": email, "tier": tier, "product": "clearance"}},
+            metadata=base_metadata,
+            subscription_data={"metadata": base_metadata},
             line_items=[
                 {
                     "quantity": 1,
