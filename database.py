@@ -336,6 +336,13 @@ async def init_db():
             created_at TEXT NOT NULL
         );
 
+        -- Per-ambassador share-link slugs (Nauti-Traffic view URLs)
+        CREATE TABLE IF NOT EXISTS ambassador_views (
+            slug TEXT PRIMARY KEY,
+            ref TEXT NOT NULL UNIQUE,
+            created_at TEXT NOT NULL
+        );
+
         CREATE INDEX IF NOT EXISTS idx_clearances_api_key ON clearances(api_key_id);
         CREATE INDEX IF NOT EXISTS idx_clearances_status ON clearances(status);
         CREATE INDEX IF NOT EXISTS idx_audit_clearance ON audit_log(clearance_id);

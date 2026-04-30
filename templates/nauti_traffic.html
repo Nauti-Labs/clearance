@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nauti-Traffic — Live Ambassador Leaderboard</title>
+    <meta name="robots" content="noindex,nofollow">
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Nauti-Traffic — Live Ambassador Leaderboard">
+    <meta property="og:description" content="Real-time tracked traffic from Clearance ambassadors. Server-side attribution. Every row is a DB receipt.">
+    <meta property="og:image" content="{{ base_url }}/static/og.png">
+
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg: #0e0e13;
+            --bg-2: #15151a;
+            --surface: #1a1a22;
+            --surface-2: #20202a;
+            --surface-3: #25252e;
+            --border: #2a2a33;
+            --border-2: #353541;
+            --amber: #E8912D;
+            --amber-bright: #f0a040;
+            --amber-soft: rgba(232, 145, 45, 0.12);
+            --text: #ececf0;
+            --text-dim: #b8b8c0;
+            --muted: #7a7a85;
+            --dim: #4a4a55;
+            --green: #4ade80;
+            --green-soft: rgba(74, 222, 128, 0.14);
+            --indigo: #818cf8;
+            --font-sans: 'Inter', -apple-system, system-ui, sans-serif;
+            --font-mono: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+        }
+        body {
+            font-family: var(--font-sans);
+            background: var(--bg);
+            background-image:
+                radial-gradient(ellipse 60% 40% at 100% 0%, rgba(232, 145, 45, 0.05), transparent 60%),
+                radial-gradient(ellipse 60% 40% at 0% 100%, rgba(85, 112, 141, 0.04), transparent 60%);
+            color: var(--text);
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+            min-height: 100vh;
+        }
+        .container { max-width: 1180px; margin: 0 auto; padding: 0 28px; }
+
+        nav {
+            border-bottom: 1px solid var(--border);
+            background: rgba(14, 14, 19, 0.85);
+            backdrop-filter: blur(12px) saturate(140%);
+            position: sticky; top: 0; z-index: 100;
+        }
+        nav .inner {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 18px 0; gap: 20px;
+        }
+        .brand {
+            display: flex; align-items: center; gap: 12px;
+            text-decoration: none; color: var(--text);
+        }
+        .brand-mark { width: 30px; height: 30px; color: var(--amber); display: block; flex-shrink: 0; }
+        .brand-mark svg { width: 100%; height: 100%; display: block; }
+        .brand-name { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
+        .brand-by {
+            font-family: var(--font-mono);
+            font-size: 11px; color: var(--muted);
+            border-left: 1px solid var(--border-2);
+            padding-left: 12px; margin-left: 4px;
+        }
+        .nav-right { display: flex; align-items: center; gap: 14px; }
+        .live-indicator {
+            display: inline-flex; align-items: center; gap: 8px;
+            font-family: var(--font-mono);
+            font-size: 11px; color: var(--green);
+            font-weight: 600; letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+        .live-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--green);
+            box-shadow: 0 0 10px var(--green);
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+        .live-indicator.dim { color: var(--muted); }
+        .live-indicator.dim .live-dot { background: var(--muted); box-shadow: none; animation: none; }
+        .last-refresh {
+            font-family: var(--font-mono);
+            font-size: 11px; color: var(--muted);
+        }
+
+        .page-head { padding: 40px 0 24px; }
+        .page-eyebrow {
+            font-family: var(--font-mono);
+            font-size: 11px; color: var(--amber);
+            letter-spacing: 0.08em; text-transform: lowercase;
+            margin-bottom: 8px;
+        }
+        h1.page-title {
+            font-size: clamp(28px, 4vw, 38px); font-weight: 700;
+            letter-spacing: -0.025em; color: #fafafd;
+            margin-bottom: 8px;
+        }
+        .page-sub {
+            color: var(--text-dim); font-size: 14px;
+            font-family: var(--font-mono);
+            max-width: 640px; line-height: 1.6;
+        }
+        .page-sub .accent { color: var(--amber); }
+
+        /* aggregate stat strip */
+        .agg {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin: 24px 0 32px;
+        }
+        .agg-cell {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 16px 18px;
+        }
+        .agg-cell .label {
+            font-family: var(--font-mono);
+            font-size: 10px; color: var(--muted);
+            letter-spacing: 0.06em; text-transform: uppercase;
+            margin-bottom: 6px;
+        }
+        .agg-cell .value {
+            font-family: var(--font-mono);
+            font-size: 22px; font-weight: 700; color: #fafafd;
+            letter-spacing: -0.01em;
+        }
+        .agg-cell .value .unit { font-size: 13px; color: var(--muted); font-weight: 500; margin-left: 2px; }
+
+        /* Trusted-by strip */
+        .trust-strip {
+            margin: 0 0 32px;
+            padding: 18px 22px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            flex-wrap: wrap;
+        }
+        .trust-label {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--muted);
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .trust-label .glyph { color: var(--amber); margin-right: 6px; }
+        .trust-avatars {
+            display: flex; align-items: center;
+            gap: 0;
+        }
+        .trust-avatar {
+            width: 36px; height: 36px;
+            border-radius: 50%;
+            border: 2px solid var(--bg);
+            background: var(--surface-3);
+            object-fit: cover;
+            margin-left: -8px;
+            transition: transform 0.15s;
+        }
+        .trust-avatar:first-child { margin-left: 0; }
+        .trust-avatar:hover {
+            transform: translateY(-2px);
+            z-index: 2;
+            position: relative;
+        }
+        .trust-handles {
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: var(--text-dim);
+            letter-spacing: 0.02em;
+        }
+        .trust-handles a {
+            color: var(--text-dim);
+            text-decoration: none;
+            margin-right: 8px;
+        }
+        .trust-handles a:hover { color: var(--amber); }
+
+        /* Leaderboard */
+        .lb-wrap {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            overflow: hidden;
+            margin-bottom: 60px;
+        }
+        .lb-head {
+            display: grid;
+            grid-template-columns: 56px minmax(160px, 2fr) 1fr 1fr 1fr 1fr 1fr;
+            gap: 8px;
+            padding: 14px 20px;
+            background: var(--surface-2);
+            border-bottom: 1px solid var(--border);
+            font-family: var(--font-mono);
+            font-size: 10px; color: var(--muted);
+            letter-spacing: 0.08em; text-transform: uppercase;
+            font-weight: 600;
+        }
+        .lb-row {
+            display: grid;
+            grid-template-columns: 56px minmax(160px, 2fr) 1fr 1fr 1fr 1fr 1fr;
+            gap: 8px;
+            padding: 14px 20px;
+            border-bottom: 1px solid var(--border);
+            align-items: center;
+            transition: background 0.1s;
+        }
+        .lb-row:last-child { border-bottom: none; }
+        .lb-row:hover { background: var(--surface-2); }
+        .lb-row.fresh { animation: fresh-flash 1.2s ease-out; }
+        @keyframes fresh-flash {
+            0% { background: var(--amber-soft); }
+            100% { background: transparent; }
+        }
+        .lb-row.onboarding {
+            opacity: 0.55;
+        }
+        .lb-row.onboarding .avatar {
+            background: var(--surface-3);
+            border-style: dashed;
+            border-color: var(--border-2);
+        }
+        .lb-row.onboarding .ref-cell .handle {
+            color: var(--muted);
+            font-style: italic;
+        }
+        .onboarding-badge {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: var(--amber);
+            background: var(--amber-soft);
+            padding: 2px 6px;
+            border-radius: 4px;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            margin-left: 8px;
+        }
+        .placeholder-svg {
+            width: 100%; height: 100%;
+            display: flex; align-items: center; justify-content: center;
+            color: var(--muted);
+            font-family: var(--font-mono);
+            font-size: 16px;
+        }
+        .avatar {
+            width: 44px; height: 44px;
+            border-radius: 50%;
+            background: var(--surface-3);
+            border: 1px solid var(--border-2);
+            object-fit: cover;
+            display: block;
+        }
+        .ref-cell {
+            display: flex; flex-direction: column; gap: 2px;
+        }
+        .ref-cell .handle {
+            font-family: var(--font-mono);
+            font-size: 14px; font-weight: 600; color: var(--amber);
+        }
+        .ref-cell .meta {
+            font-family: var(--font-mono);
+            font-size: 11px; color: var(--muted);
+        }
+        .num {
+            font-family: var(--font-mono);
+            font-size: 14px; font-weight: 500;
+            color: var(--text);
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+        .num.zero { color: var(--dim); }
+        .num.hot { color: var(--green); font-weight: 700; }
+        .num.rev { color: var(--amber); font-weight: 700; }
+        .num.rev.zero { color: var(--dim); font-weight: 500; }
+
+        .text-right { text-align: right; }
+        .panel-msg {
+            padding: 60px 24px; text-align: center;
+            color: var(--muted);
+            font-family: var(--font-mono);
+            font-size: 13px;
+        }
+        .panel-msg .glyph {
+            color: var(--amber);
+            font-size: 18px; margin-bottom: 8px;
+            display: block;
+        }
+
+        footer {
+            padding: 30px 0 50px;
+            border-top: 1px solid var(--border);
+        }
+        footer .inner {
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 20px; flex-wrap: wrap;
+            font-family: var(--font-mono);
+            font-size: 12px; color: var(--muted);
+        }
+        footer a { color: var(--amber); text-decoration: none; }
+        footer a:hover { text-decoration: underline; }
+
+        @media (max-width: 760px) {
+            .agg { grid-template-columns: repeat(2, 1fr); }
+            .lb-head, .lb-row {
+                grid-template-columns: 44px 1fr 1fr 1fr;
+                gap: 6px;
+                padding: 12px 16px;
+                font-size: 11px;
+            }
+            .lb-head .h-pro, .lb-head .h-scale, .lb-head .h-rev,
+            .lb-row .c-pro, .lb-row .c-scale, .lb-row .c-rev {
+                display: none;
+            }
+            .avatar { width: 36px; height: 36px; }
+            .ref-cell .handle { font-size: 13px; }
+            .num { font-size: 12px; }
+        }
+    </style>
+</head>
+<body>
+
+<nav>
+    <div class="container inner">
+        <a href="/" class="brand">
+            <span class="brand-mark" aria-hidden="true">
+                <svg viewBox="0 0 100 100" fill="none">
+                    <path d="M 18 30 L 38 50 L 18 70" stroke="currentColor" stroke-width="11" stroke-linecap="square" stroke-linejoin="miter" opacity="0.45" fill="none"/>
+                    <path d="M 40 30 L 60 50 L 40 70" stroke="currentColor" stroke-width="11" stroke-linecap="square" stroke-linejoin="miter" opacity="0.75" fill="none"/>
+                    <path d="M 62 30 L 82 50 L 62 70" stroke="currentColor" stroke-width="11" stroke-linecap="square" stroke-linejoin="miter" fill="none"/>
+                </svg>
+            </span>
+            <span class="brand-name">Nauti-Traffic</span>
+            <span class="brand-by">by Nauti-Labs</span>
+        </a>
+        <div class="nav-right">
+            <span class="live-indicator dim" id="live-indicator">
+                <span class="live-dot"></span>
+                <span id="live-label">connecting</span>
+            </span>
+            <span class="last-refresh" id="last-refresh">—</span>
+        </div>
+    </div>
+</nav>
+
+<div class="container">
+    <div class="page-head">
+        <div class="page-eyebrow">// live · public · server-side attribution</div>
+        <h1 class="page-title">Ambassador Leaderboard</h1>
+        <p class="page-sub">
+            Every click is logged in our DB. Every signup is tagged with the ambassador
+            who drove it. <span class="accent">No analytics tricks, no estimates</span> —
+            this page is what we'd send to a court if anyone disputed their numbers.
+        </p>
+    </div>
+
+    <!-- TRUSTED-BY STRIP -->
+    <div class="trust-strip" id="trust-strip" style="display:none">
+        <span class="trust-label"><span class="glyph">▸</span>trusted by</span>
+        <div class="trust-avatars" id="trust-avatars"></div>
+        <div class="trust-handles" id="trust-handles"></div>
+    </div>
+
+    <div class="agg">
+        <div class="agg-cell">
+            <div class="label">▸ ambassadors</div>
+            <div class="value" id="agg-count">—</div>
+        </div>
+        <div class="agg-cell">
+            <div class="label">▸ total clicks</div>
+            <div class="value" id="agg-clicks">—</div>
+        </div>
+        <div class="agg-cell">
+            <div class="label">▸ paying subs</div>
+            <div class="value" id="agg-paid">—</div>
+        </div>
+        <div class="agg-cell">
+            <div class="label">▸ attributed MRR</div>
+            <div class="value">$<span id="agg-rev">—</span></div>
+        </div>
+    </div>
+
+    <div class="lb-wrap">
+        <div class="lb-head">
+            <div></div>
+            <div>Ambassador</div>
+            <div class="text-right">Clicks</div>
+            <div class="text-right">Free</div>
+            <div class="text-right h-pro">Pro</div>
+            <div class="text-right h-scale">Scale</div>
+            <div class="text-right h-rev">MRR</div>
+        </div>
+        <div id="lb-body">
+            <div class="panel-msg"><span class="glyph">▸</span>loading live data…</div>
+        </div>
+    </div>
+</div>
+
+<footer>
+    <div class="container inner">
+        <div>
+            <strong style="color: var(--text-dim);">Nauti-Traffic</strong> · powered by
+            <a href="/">Clearance</a> · auto-refreshing every 20s
+        </div>
+        <div>
+            Want to be an ambassador?
+            <a href="https://x.com/Nauti_Labs">DM @Nauti_Labs</a>
+        </div>
+    </div>
+</footer>
+
+<script>
+const REFRESH_MS = 20000;
+const seenClicks = new Map(); // ref → last clicks count, for fresh-row animation
+let trustConfig = { trusted_by: [], onboarding: [] };
+
+async function loadTrustConfig() {
+    try {
+        const r = await fetch('/static/trusted_by.json', { cache: 'no-cache' });
+        if (r.ok) trustConfig = await r.json();
+    } catch (e) { /* fallback: empty */ }
+    renderTrustStrip();
+}
+
+function renderTrustStrip() {
+    const tb = trustConfig.trusted_by || [];
+    const strip = document.getElementById('trust-strip');
+    if (!tb.length) { strip.style.display = 'none'; return; }
+    strip.style.display = 'flex';
+
+    const avEl = document.getElementById('trust-avatars');
+    const hEl = document.getElementById('trust-handles');
+    avEl.innerHTML = tb.slice(0, 8).map(t => {
+        const handle = (t.handle || '').replace(/^@/, '');
+        return `<a href="https://x.com/${escHtml(handle)}" target="_blank" rel="noopener noreferrer" title="@${escHtml(handle)}"><img class="trust-avatar" src="https://unavatar.io/x/${escHtml(handle)}" alt="@${escHtml(handle)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 40 40%22><rect width=%2240%22 height=%2240%22 fill=%22%2325252e%22/><text x=%2220%22 y=%2226%22 text-anchor=%22middle%22 fill=%22%23E8912D%22 font-family=%22monospace%22 font-size=%2218%22 font-weight=%22700%22>${escHtml(handle.charAt(0).toUpperCase())}</text></svg>'"></a>`;
+    }).join('');
+
+    hEl.innerHTML = tb.slice(0, 8).map(t => {
+        const handle = (t.handle || '').replace(/^@/, '');
+        return `<a href="https://x.com/${escHtml(handle)}" target="_blank" rel="noopener noreferrer">@${escHtml(handle)}</a>`;
+    }).join('');
+}
+
+function escHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+}
+
+function fmtTime(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    const diffMin = Math.round((Date.now() - d) / 60000);
+    if (diffMin < 1) return 'just now';
+    if (diffMin < 60) return diffMin + 'm ago';
+    const diffH = Math.round(diffMin / 60);
+    if (diffH < 24) return diffH + 'h ago';
+    return Math.round(diffH/24) + 'd ago';
+}
+
+function setLive(state) {
+    const ind = document.getElementById('live-indicator');
+    const lbl = document.getElementById('live-label');
+    if (state === 'live') { ind.classList.remove('dim'); lbl.textContent = 'live'; }
+    else if (state === 'syncing') { ind.classList.remove('dim'); lbl.textContent = 'syncing'; }
+    else { ind.classList.add('dim'); lbl.textContent = state; }
+}
+
+async function refresh() {
+    setLive('syncing');
+    try {
+        const r = await fetch('/v1/traffic', { cache: 'no-store' });
+        if (!r.ok) throw new Error('http ' + r.status);
+        const data = await r.json();
+        const ambs = data.ambassadors || [];
+
+        let totalClicks = 0, totalPaid = 0, totalRev = 0;
+        const rowsHtml = ambs.map(a => {
+            totalClicks += (a.clicks || 0);
+            totalPaid += (a.paid_conversions || 0);
+            totalRev += (a.monthly_revenue_usd || 0);
+
+            const proCount = (a.pro && a.pro.count) || 0;
+            const scaleCount = (a.scale && a.scale.count) || 0;
+            const lastSeen = fmtTime(a.last_click_at);
+
+            const prevClicks = seenClicks.get(a.ambassador) || 0;
+            const isFresh = prevClicks > 0 && (a.clicks || 0) > prevClicks;
+            seenClicks.set(a.ambassador, a.clicks || 0);
+
+            return `
+            <div class="lb-row${isFresh ? ' fresh' : ''}">
+                <img class="avatar" src="${escHtml(a.avatar_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.background='var(--surface-3)';this.src='data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 40 40%22><rect width=%2240%22 height=%2240%22 fill=%22%2325252e%22/><text x=%2220%22 y=%2226%22 text-anchor=%22middle%22 fill=%22%23E8912D%22 font-family=%22monospace%22 font-size=%2218%22 font-weight=%22700%22>${escHtml((a.ambassador||'').charAt(0).toUpperCase())}</text></svg>'">
+                <div class="ref-cell">
+                    <span class="handle">@${escHtml(a.ambassador)}</span>
+                    <span class="meta">last click ${lastSeen}</span>
+                </div>
+                <div class="num ${(a.clicks||0)===0?'zero':''}">${(a.clicks||0).toLocaleString()}</div>
+                <div class="num ${(a.free_signups||0)>0?'hot':'zero'}">${(a.free_signups||0).toLocaleString()}</div>
+                <div class="num c-pro ${proCount>0?'hot':'zero'}">${proCount.toLocaleString()}</div>
+                <div class="num c-scale ${scaleCount>0?'hot':'zero'}">${scaleCount.toLocaleString()}</div>
+                <div class="num c-rev rev ${(a.monthly_revenue_usd||0)===0?'zero':''}">$${(a.monthly_revenue_usd||0).toFixed(0)}</div>
+            </div>`;
+        }).join('');
+
+        // Append onboarding rows (greyed out, honest "pending" labels)
+        const onboarding = trustConfig.onboarding || [];
+        const onboardingHtml = onboarding.map(o => {
+            const label = escHtml(o.label || 'Onboarding');
+            const focus = escHtml(o.focus || '');
+            return `
+            <div class="lb-row onboarding">
+                <div class="avatar" style="display:flex;align-items:center;justify-content:center"><div class="placeholder-svg">▸</div></div>
+                <div class="ref-cell">
+                    <span class="handle">${label}<span class="onboarding-badge">pending</span></span>
+                    <span class="meta">${focus || '—'}</span>
+                </div>
+                <div class="num zero">—</div>
+                <div class="num zero">—</div>
+                <div class="num c-pro zero">—</div>
+                <div class="num c-scale zero">—</div>
+                <div class="num c-rev zero">—</div>
+            </div>`;
+        }).join('');
+
+        const combinedHtml = (ambs.length === 0 && onboarding.length === 0)
+            ? '<div class="panel-msg"><span class="glyph">▸</span>no ambassadors yet</div>'
+            : (rowsHtml + onboardingHtml);
+        document.getElementById('lb-body').innerHTML = combinedHtml;
+
+        document.getElementById('agg-count').textContent = (ambs.length + onboarding.length);
+        document.getElementById('agg-clicks').textContent = totalClicks.toLocaleString();
+        document.getElementById('agg-paid').textContent = totalPaid.toLocaleString();
+        document.getElementById('agg-rev').textContent = totalRev.toFixed(0);
+
+        const stamp = new Date().toLocaleTimeString();
+        document.getElementById('last-refresh').textContent = 'updated ' + stamp;
+        setLive('live');
+    } catch (e) {
+        setLive('error');
+    }
+}
+
+loadTrustConfig().then(() => refresh());
+setInterval(refresh, REFRESH_MS);
+</script>
+</body>
+</html>

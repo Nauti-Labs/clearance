@@ -1528,20 +1528,15 @@ async def list_ambassadors(x_admin_key: str = Header(None, alias="X-Admin-Key"))
         await db.close()
 
 
-@app.get("/v1/admin/ambassadors/{name}", tags=["Admin"])
-async def ambassador_stats(name: str, x_admin_key: str = Header(None, alias="X-Admin-Key")):
-    """Detailed stats for one ambassador. Provable from DB rows."""
-    _require_admin(x_admin_key)
-    ref = _validate_ref(name)
-    if not ref:
-        raise HTTPException(status_code=400, detail="invalid ambassador name (a-z, 0-9, _ -)")
+async def _ambassador_stats_payload(ref: str) -> dict:
+    """Compute one ambassador's stats. Used by both admin + public endpoints.
+
+    Privacy: never includes emails or IPs. Per-tier paid breakdown included.
+    """
     db = await get_db()
     try:
         click_total = (await (await db.execute(
             "SELECT COUNT(*) AS n FROM visits WHERE ref = ? AND is_bot = 0", (ref,)
-        )).fetchone())["n"]
-        click_bots = (await (await db.execute(
-            "SELECT COUNT(*) AS n FROM visits WHERE ref = ? AND is_bot = 1", (ref,)
         )).fetchone())["n"]
         first_click = (await (await db.execute(
             "SELECT MIN(created_at) AS t FROM visits WHERE ref = ?", (ref,)
@@ -1552,32 +1547,92 @@ async def ambassador_stats(name: str, x_admin_key: str = Header(None, alias="X-A
         signups = (await (await db.execute(
             "SELECT COUNT(*) AS n FROM api_keys WHERE referred_by = ?", (ref,)
         )).fetchone())["n"]
-        signup_emails = [r["email"] for r in await (await db.execute(
-            "SELECT email FROM api_keys WHERE referred_by = ? ORDER BY created_at DESC LIMIT 50", (ref,)
-        )).fetchall()]
-        paid = (await (await db.execute(
-            "SELECT COUNT(*) AS n FROM payments WHERE referred_by = ? AND status = 'verified'", (ref,)
-        )).fetchone())["n"]
-        paid_revenue = (await (await db.execute(
-            "SELECT COALESCE(SUM(amount), 0) AS r FROM payments WHERE referred_by = ? AND status = 'verified'", (ref,)
-        )).fetchone())["r"]
+
+        # Per-tier paid breakdown
+        tier_rows = await (await db.execute(
+            """SELECT tier, COUNT(*) AS n, COALESCE(SUM(amount), 0) AS rev
+               FROM payments
+               WHERE referred_by = ? AND status = 'verified'
+               GROUP BY tier""",
+            (ref,),
+        )).fetchall()
+        tier_map = {r["tier"]: {"count": r["n"], "monthly_revenue_usd": float(r["rev"])} for r in tier_rows}
+        pro = tier_map.get("pro", {"count": 0, "monthly_revenue_usd": 0.0})
+        scale = tier_map.get("scale", {"count": 0, "monthly_revenue_usd": 0.0})
+        total_paid = pro["count"] + scale["count"]
+        total_rev = pro["monthly_revenue_usd"] + scale["monthly_revenue_usd"]
+        free_signups = max(signups - total_paid, 0)
 
         cvr = round((signups / click_total * 100), 2) if click_total else 0.0
         return {
             "ambassador": ref,
             "tracked_link": f"{BASE_URL.rstrip('/')}/r/{ref}",
+            "avatar_url": f"https://unavatar.io/x/{ref}",
             "clicks": click_total,
-            "bot_clicks_excluded": click_bots,
             "signups": signups,
-            "paid_conversions": paid,
-            "paid_revenue_usd": float(paid_revenue),
+            "free_signups": free_signups,
+            "pro": pro,
+            "scale": scale,
+            "paid_conversions": total_paid,
+            "monthly_revenue_usd": total_rev,
             "click_to_signup_rate_pct": cvr,
             "first_click_at": first_click,
             "last_click_at": last_click,
-            "signup_emails_sample": signup_emails,
         }
     finally:
         await db.close()
+
+
+@app.get("/v1/admin/ambassadors/{name}", tags=["Admin"])
+async def ambassador_stats(name: str, x_admin_key: str = Header(None, alias="X-Admin-Key")):
+    """Detailed stats for one ambassador. Provable from DB rows."""
+    _require_admin(x_admin_key)
+    ref = _validate_ref(name)
+    if not ref:
+        raise HTTPException(status_code=400, detail="invalid ambassador name (a-z, 0-9, _ -)")
+    return await _ambassador_stats_payload(ref)
+
+
+@app.get("/v1/traffic", tags=["Public"])
+async def public_traffic_leaderboard():
+    """Public Nauti-Traffic leaderboard. No auth, no emails, no IPs.
+
+    Returns every ambassador with click + signup totals + tier breakdown.
+    Sorted by clicks desc.
+    """
+    db = await get_db()
+    try:
+        # Union of refs from visits + api_keys.referred_by + payments.referred_by
+        cur = await db.execute("""
+            SELECT DISTINCT ref FROM (
+                SELECT ref FROM visits WHERE ref IS NOT NULL
+                UNION
+                SELECT referred_by AS ref FROM api_keys WHERE referred_by IS NOT NULL
+                UNION
+                SELECT referred_by AS ref FROM payments WHERE referred_by IS NOT NULL
+            )
+        """)
+        refs = [r["ref"] for r in await cur.fetchall() if r["ref"]]
+    finally:
+        await db.close()
+
+    rows = []
+    for ref in refs:
+        try:
+            rows.append(await _ambassador_stats_payload(ref))
+        except Exception:
+            continue
+    rows.sort(key=lambda x: (x["clicks"], x["paid_conversions"]), reverse=True)
+    return {"ambassadors": rows, "count": len(rows)}
+
+
+@app.get("/nauti-traffic", response_class=HTMLResponse, tags=["Pages"])
+async def nauti_traffic_page(request: Request):
+    """Public Nauti-Traffic leaderboard page."""
+    return templates.TemplateResponse(
+        "nauti_traffic.html",
+        {"request": request, "base_url": BASE_URL.rstrip("/")},
+    )
 
 
 @app.get("/family/login", response_class=HTMLResponse, tags=["Family"])

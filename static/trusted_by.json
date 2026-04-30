@@ -1,0 +1,15 @@
+{
+  "_comment": "Edit this file to update Nauti-Traffic trust signals. Avatars auto-pull from unavatar.io/x/<handle>. Trusted_by = real X handles in conversation/watching (no fake numbers shown — just an avatar strip). Onboarding = honest 'next batch' rows that show momentum without naming specific people prematurely.",
+
+  "trusted_by": [
+    { "handle": "Nauti_Labs", "label": "@Nauti_Labs" }
+  ],
+
+  "onboarding": [
+    { "label": "Onboarding · target May 2",  "focus": "Crypto / AI" },
+    { "label": "Onboarding · target May 5",  "focus": "Trading bots" },
+    { "label": "Onboarding · target May 8",  "focus": "Builder devs" },
+    { "label": "Onboarding · target May 12", "focus": "Maritime / ops" },
+    { "label": "Onboarding · target May 15", "focus": "TBD" }
+  ]
+}
