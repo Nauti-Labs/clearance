@@ -3,6 +3,12 @@
 
   "captain": "dipson_crypt",
 
+  "avatar_overrides": {
+    "_doc": "ref → real X handle when ref doesn't match the handle",
+    "melissa": "tripleK31",
+    "emmacrypto": "00Q__"
+  },
+
   "trusted_by": [
     { "handle": "Dipson_Crypt", "label": "@Dipson_Crypt" },
     { "handle": "Nauti_Labs",   "label": "@Nauti_Labs" }
