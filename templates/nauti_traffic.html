@@ -262,6 +262,36 @@
         .captain-badge .anchor {
             font-size: 11px;
         }
+        /* General traffic row — non-attributed (Telegram/Reddit/direct/SEO) */
+        .lb-row.general {
+            background: linear-gradient(90deg, rgba(129, 140, 248, 0.08) 0%, transparent 70%);
+            border-left: 3px solid var(--indigo);
+            padding-left: 17px;
+        }
+        .lb-row.general .avatar {
+            background: var(--indigo-soft);
+            border: 1px solid rgba(129, 140, 248, 0.3);
+            display: flex; align-items: center; justify-content: center;
+            color: var(--indigo);
+            font-family: var(--font-mono);
+            font-size: 18px;
+            font-weight: 700;
+        }
+        .lb-row.general .ref-cell .handle {
+            color: var(--indigo);
+        }
+        .general-badge {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: var(--indigo);
+            background: var(--indigo-soft);
+            padding: 2px 6px;
+            border-radius: 4px;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            margin-left: 8px;
+        }
+
         .lb-row.onboarding {
             opacity: 0.55;
         }
@@ -521,7 +551,30 @@ async function refresh() {
         const data = await r.json();
         const ambs = data.ambassadors || [];
 
+        // General (non-attributed) traffic row — pinned at top of leaderboard
+        const gen = data.general_traffic || null;
+        let generalHtml = '';
         let totalClicks = 0, totalPaid = 0, totalRev = 0;
+        if (gen) {
+            totalClicks += (gen.clicks || 0);
+            totalPaid += (gen.paid_conversions || 0);
+            totalRev += (gen.monthly_revenue_usd || 0);
+            const proCount = (gen.pro && gen.pro.count) || 0;
+            const scaleCount = (gen.scale && gen.scale.count) || 0;
+            generalHtml = `
+            <div class="lb-row general">
+                <div class="avatar">🌐</div>
+                <div class="ref-cell">
+                    <span class="handle">General Traffic<span class="general-badge">organic</span></span>
+                    <span class="meta">Telegram · Reddit · direct · SEO</span>
+                </div>
+                <div class="num ${(gen.clicks||0)===0?'zero':''}">${(gen.clicks||0).toLocaleString()}</div>
+                <div class="num ${(gen.free_signups||0)>0?'hot':'zero'}">${(gen.free_signups||0).toLocaleString()}</div>
+                <div class="num c-pro ${proCount>0?'hot':'zero'}">${proCount.toLocaleString()}</div>
+                <div class="num c-scale ${scaleCount>0?'hot':'zero'}">${scaleCount.toLocaleString()}</div>
+                <div class="num c-rev rev ${(gen.monthly_revenue_usd||0)===0?'zero':''}">$${(gen.monthly_revenue_usd||0).toFixed(0)}</div>
+            </div>`;
+        }
         const rowsHtml = ambs.map(a => {
             totalClicks += (a.clicks || 0);
             totalPaid += (a.paid_conversions || 0);
@@ -580,9 +633,9 @@ async function refresh() {
             </div>`;
         }).join('');
 
-        const combinedHtml = (ambs.length === 0 && onboarding.length === 0)
+        const combinedHtml = (ambs.length === 0 && onboarding.length === 0 && !gen)
             ? '<div class="panel-msg"><span class="glyph">▸</span>no ambassadors yet</div>'
-            : (rowsHtml + onboardingHtml);
+            : (generalHtml + rowsHtml + onboardingHtml);
         document.getElementById('lb-body').innerHTML = combinedHtml;
 
         document.getElementById('agg-count').textContent = (ambs.length + onboarding.length);

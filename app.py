@@ -1593,16 +1593,49 @@ async def ambassador_stats(name: str, x_admin_key: str = Header(None, alias="X-A
     return await _ambassador_stats_payload(ref)
 
 
+async def _general_traffic_payload() -> dict:
+    """Aggregate non-attributed visits + signups (Telegram / Reddit / direct / SEO / etc)."""
+    db = await get_db()
+    try:
+        clicks = (await (await db.execute(
+            "SELECT COUNT(*) AS n FROM visits WHERE ref IS NULL AND is_bot = 0 AND path = '/'"
+        )).fetchone())["n"]
+        signups = (await (await db.execute(
+            "SELECT COUNT(*) AS n FROM api_keys WHERE referred_by IS NULL"
+        )).fetchone())["n"]
+        tier_rows = await (await db.execute(
+            """SELECT tier, COUNT(*) AS n, COALESCE(SUM(amount), 0) AS rev
+               FROM payments
+               WHERE referred_by IS NULL AND status = 'verified'
+               GROUP BY tier"""
+        )).fetchall()
+        tier_map = {r["tier"]: {"count": r["n"], "monthly_revenue_usd": float(r["rev"])} for r in tier_rows}
+        pro = tier_map.get("pro", {"count": 0, "monthly_revenue_usd": 0.0})
+        scale = tier_map.get("scale", {"count": 0, "monthly_revenue_usd": 0.0})
+        total_paid = pro["count"] + scale["count"]
+        total_rev = pro["monthly_revenue_usd"] + scale["monthly_revenue_usd"]
+        free_signups = max(signups - total_paid, 0)
+        return {
+            "clicks": clicks,
+            "free_signups": free_signups,
+            "pro": pro,
+            "scale": scale,
+            "paid_conversions": total_paid,
+            "monthly_revenue_usd": total_rev,
+        }
+    finally:
+        await db.close()
+
+
 @app.get("/v1/traffic", tags=["Public"])
 async def public_traffic_leaderboard():
     """Public Nauti-Traffic leaderboard. No auth, no emails, no IPs.
 
-    Returns every ambassador with click + signup totals + tier breakdown.
-    Sorted by clicks desc.
+    Returns every ambassador with click + signup totals + tier breakdown,
+    plus a `general_traffic` aggregate for non-attributed visits.
     """
     db = await get_db()
     try:
-        # Union of refs from visits + api_keys.referred_by + payments.referred_by
         cur = await db.execute("""
             SELECT DISTINCT ref FROM (
                 SELECT ref FROM visits WHERE ref IS NOT NULL
@@ -1623,7 +1656,11 @@ async def public_traffic_leaderboard():
         except Exception:
             continue
     rows.sort(key=lambda x: (x["clicks"], x["paid_conversions"]), reverse=True)
-    return {"ambassadors": rows, "count": len(rows)}
+    return {
+        "ambassadors": rows,
+        "count": len(rows),
+        "general_traffic": await _general_traffic_payload(),
+    }
 
 
 @app.get("/nauti-traffic", response_class=HTMLResponse, tags=["Pages"])
