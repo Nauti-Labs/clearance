@@ -231,6 +231,37 @@
             0% { background: var(--amber-soft); }
             100% { background: transparent; }
         }
+
+        /* CAPTAIN row — affiliate captain treatment */
+        .lb-row.captain {
+            background:
+                linear-gradient(90deg, rgba(232, 145, 45, 0.08) 0%, transparent 70%);
+            border-left: 3px solid var(--amber);
+            padding-left: 17px;
+        }
+        .lb-row.captain .avatar {
+            border: 2px solid var(--amber);
+            box-shadow: 0 0 12px rgba(232, 145, 45, 0.3);
+        }
+        .captain-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            font-weight: 700;
+            color: #1a1a1f;
+            background: linear-gradient(135deg, var(--amber) 0%, var(--amber-bright) 100%);
+            padding: 2px 8px;
+            border-radius: 4px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            margin-left: 8px;
+            box-shadow: 0 2px 8px rgba(232, 145, 45, 0.25);
+        }
+        .captain-badge .anchor {
+            font-size: 11px;
+        }
         .lb-row.onboarding {
             opacity: 0.55;
         }
@@ -430,7 +461,7 @@
 <script>
 const REFRESH_MS = 20000;
 const seenClicks = new Map(); // ref → last clicks count, for fresh-row animation
-let trustConfig = { trusted_by: [], onboarding: [] };
+let trustConfig = { trusted_by: [], onboarding: [], captain: null };
 
 async function loadTrustConfig() {
     try {
@@ -504,11 +535,17 @@ async function refresh() {
             const isFresh = prevClicks > 0 && (a.clicks || 0) > prevClicks;
             seenClicks.set(a.ambassador, a.clicks || 0);
 
+            const captainRef = (trustConfig.captain || '').toLowerCase();
+            const isCaptain = captainRef && a.ambassador === captainRef;
+            const captainBadge = isCaptain
+                ? '<span class="captain-badge"><span class="anchor">⚓</span>captain</span>'
+                : '';
+
             return `
-            <div class="lb-row${isFresh ? ' fresh' : ''}">
+            <div class="lb-row${isFresh ? ' fresh' : ''}${isCaptain ? ' captain' : ''}">
                 <img class="avatar" src="${escHtml(a.avatar_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.background='var(--surface-3)';this.src='data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 40 40%22><rect width=%2240%22 height=%2240%22 fill=%22%2325252e%22/><text x=%2220%22 y=%2226%22 text-anchor=%22middle%22 fill=%22%23E8912D%22 font-family=%22monospace%22 font-size=%2218%22 font-weight=%22700%22>${escHtml((a.ambassador||'').charAt(0).toUpperCase())}</text></svg>'">
                 <div class="ref-cell">
-                    <span class="handle">@${escHtml(a.ambassador)}</span>
+                    <span class="handle">@${escHtml(a.ambassador)}${captainBadge}</span>
                     <span class="meta">last click ${lastSeen}</span>
                 </div>
                 <div class="num ${(a.clicks||0)===0?'zero':''}">${(a.clicks||0).toLocaleString()}</div>

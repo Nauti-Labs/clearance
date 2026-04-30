@@ -1,8 +1,11 @@
 {
-  "_comment": "Edit this file to update Nauti-Traffic trust signals. Avatars auto-pull from unavatar.io/x/<handle>. Trusted_by = real X handles in conversation/watching (no fake numbers shown — just an avatar strip). Onboarding = honest 'next batch' rows that show momentum without naming specific people prematurely.",
+  "_comment": "Edit this file to update Nauti-Traffic trust signals. Avatars auto-pull from unavatar.io/x/<handle>. Trusted_by = real X handles in conversation/watching (no fake numbers shown — just an avatar strip). Onboarding = honest 'next batch' rows that show momentum without naming specific people prematurely. Captain = single ref that gets the ⚓ CAPTAIN badge in the leaderboard.",
+
+  "captain": "dipson_crypt",
 
   "trusted_by": [
-    { "handle": "Nauti_Labs", "label": "@Nauti_Labs" }
+    { "handle": "Dipson_Crypt", "label": "@Dipson_Crypt" },
+    { "handle": "Nauti_Labs",   "label": "@Nauti_Labs" }
   ],
 
   "onboarding": [
