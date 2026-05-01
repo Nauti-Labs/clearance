@@ -28,6 +28,7 @@ class ClearanceSmokeTests(unittest.TestCase):
         os.environ["FAMILY_NICOLE_PASSCODE"] = "nauti-nicole"
         os.environ["FAMILY_SYNC_TOKEN"] = "sync-secret"
         os.environ["NAUTI_TRAFFIC_ADMIN_PIN"] = "123456"
+        os.environ["NAUTI_TRAFFIC_ADMIN_PATH_TOKEN"] = "test_admin_secret_123456"
 
         self.database = importlib.import_module("database")
         self.database = importlib.reload(self.database)
@@ -78,31 +79,44 @@ class ClearanceSmokeTests(unittest.TestCase):
         self.assertIn("Ambassador Leaderboard", response.text)
 
     def test_nauti_traffic_admin_updates_display_config(self):
+        admin_path = "/nauti-traffic/admin/test_admin_secret_123456"
         with TestClient(self.app_module.app) as client:
             locked = client.get("/nauti-traffic/admin")
-            bad_login = client.post(
-                "/nauti-traffic/admin/login",
-                data={"pin": "000000"},
-                follow_redirects=False,
-            )
-            login = client.post(
+            old_login = client.post(
                 "/nauti-traffic/admin/login",
                 data={"pin": "123456"},
                 follow_redirects=False,
             )
-            unlocked = client.get("/nauti-traffic/admin")
+            wrong_secret = client.get("/nauti-traffic/admin/wrong_secret_12345")
+            wrong_secret_post = client.post(
+                "/nauti-traffic/admin/wrong_secret_12345/affiliate",
+                data={"ref": "bhamzy"},
+                follow_redirects=False,
+            )
+            secret_locked = client.get(admin_path)
+            bad_login = client.post(
+                f"{admin_path}/login",
+                data={"pin": "000000"},
+                follow_redirects=False,
+            )
+            login = client.post(
+                f"{admin_path}/login",
+                data={"pin": "123456"},
+                follow_redirects=False,
+            )
+            unlocked = client.get(admin_path)
             saved = client.post(
-                "/nauti-traffic/admin/affiliate",
+                f"{admin_path}/affiliate",
                 data={"ref": "bhamzy", "badge": "first_mate", "avatar_url": "", "x_handle": "bhamzy"},
                 follow_redirects=False,
             )
             alias = client.post(
-                "/nauti-traffic/admin/alias",
+                f"{admin_path}/alias",
                 data={"alias": "bhamzi", "target": "bhamzy"},
                 follow_redirects=False,
             )
             hidden = client.post(
-                "/nauti-traffic/admin/hide",
+                f"{admin_path}/hide",
                 data={"ref": "telegram", "action": "hide"},
                 follow_redirects=False,
             )
@@ -112,13 +126,18 @@ class ClearanceSmokeTests(unittest.TestCase):
             health = client.get("/health")
             config = client.get("/v1/traffic/config")
 
-        self.assertEqual(locked.status_code, 200)
-        self.assertIn("PIN Required", locked.text)
+        self.assertEqual(locked.status_code, 404)
+        self.assertEqual(old_login.status_code, 404)
+        self.assertEqual(wrong_secret.status_code, 404)
+        self.assertEqual(wrong_secret_post.status_code, 404)
+        self.assertEqual(secret_locked.status_code, 200)
+        self.assertIn("PIN Required", secret_locked.text)
         self.assertEqual(bad_login.status_code, 303)
         self.assertEqual(login.status_code, 303)
         self.assertIn("nauti_traffic_admin", login.headers.get("set-cookie", ""))
         self.assertEqual(unlocked.status_code, 200)
         self.assertIn("Affiliate Control", unlocked.text)
+        self.assertIn(f'action="{admin_path}/affiliate"', unlocked.text)
         self.assertEqual(saved.status_code, 303)
         self.assertEqual(alias.status_code, 303)
         self.assertEqual(hidden.status_code, 303)

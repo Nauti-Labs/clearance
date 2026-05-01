@@ -201,7 +201,7 @@
         <nav class="nav">
             <a class="btn" href="/nauti-traffic">Leaderboard</a>
             {% if logged_in %}
-                <form method="post" action="/nauti-traffic/admin/logout">
+                <form method="post" action="{{ admin_path }}/logout">
                     <button type="submit">Lock</button>
                 </form>
             {% endif %}
@@ -223,7 +223,7 @@
             </div>
             <div class="body">
                 {% if configured %}
-                    <form class="stack" method="post" action="/nauti-traffic/admin/login">
+                    <form class="stack" method="post" action="{{ admin_path }}/login">
                         <label>
                             Admin PIN
                             <input name="pin" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required autofocus>
@@ -246,7 +246,7 @@
                     <span class="sub">{{ base_url }}/r/&lt;ref&gt;</span>
                 </div>
                 <div class="body">
-                    <form class="stack" method="post" action="/nauti-traffic/admin/affiliate">
+                    <form class="stack" method="post" action="{{ admin_path }}/affiliate">
                         <div class="row">
                             <label>
                                 Ref
@@ -315,7 +315,7 @@
                     <span class="sub">typo → canonical</span>
                 </div>
                 <div class="body">
-                    <form class="stack" method="post" action="/nauti-traffic/admin/alias">
+                    <form class="stack" method="post" action="{{ admin_path }}/alias">
                         <div class="row">
                             <label>
                                 Alias
@@ -346,7 +346,7 @@
                     <span class="sub">display only</span>
                 </div>
                 <div class="body">
-                    <form class="stack" method="post" action="/nauti-traffic/admin/hide">
+                    <form class="stack" method="post" action="{{ admin_path }}/hide">
                         <label>
                             Ref
                             <input name="ref" placeholder="telegram_nafson" pattern="[A-Za-z0-9_-]{1,64}" required>
@@ -386,7 +386,7 @@
                                 <td class="num">{{ row.paid_conversions }}</td>
                                 <td><a href="{{ row.tracked_link }}">{{ row.tracked_link }}</a></td>
                                 <td class="num">
-                                    <form class="inline-form" method="post" action="/nauti-traffic/admin/hide">
+                                    <form class="inline-form" method="post" action="{{ admin_path }}/hide">
                                         <input type="hidden" name="ref" value="{{ row.ambassador }}">
                                         <button class="mini danger" name="action" value="hide" type="submit">Hide</button>
                                     </form>
