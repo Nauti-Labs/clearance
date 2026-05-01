@@ -4,7 +4,7 @@
   "captain": "dipson_crypt",
 
   "_first_mates_doc": "Up to 10 First Mate badges total. Tier below Captain. Add ref names lowercased.",
-  "first_mates": ["plemab", "x6r", "davidfx", "d0ny_g"],
+  "first_mates": ["plemab", "x6r", "davidfx", "d0ny_g", "nft_queen"],
 
   "ref_aliases": {
     "_doc": "mistyped ref → canonical public ref",
@@ -29,7 +29,8 @@
     "plemab": "/static/avatars/plemab.png",
     "plemeb": "/static/avatars/plemab.png",
     "davidfx": "/static/avatars/davidfx.png",
-    "d0ny_g": "/static/avatars/d0ny_g.png"
+    "d0ny_g": "/static/avatars/d0ny_g.png",
+    "nft_queen": "/static/avatars/nft_queen.png"
   },
 
   "trusted_by": [
