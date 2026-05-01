@@ -262,6 +262,27 @@
         .captain-badge .anchor {
             font-size: 11px;
         }
+        .first-mate-badge {
+            display: inline-flex; align-items: center; gap: 4px;
+            font-family: var(--font-mono);
+            font-size: 9px; font-weight: 700;
+            color: #c9d4e5;
+            background: rgba(126, 151, 176, 0.18);
+            border: 1px solid rgba(126, 151, 176, 0.35);
+            padding: 2px 7px;
+            border-radius: 4px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            margin-left: 8px;
+        }
+        .first-mate-badge .anchor {
+            font-size: 10px;
+            color: #a0b3c8;
+        }
+        .lb-row.first-mate .avatar {
+            border-color: rgba(126, 151, 176, 0.45);
+            box-shadow: 0 0 0 1px rgba(126, 151, 176, 0.25);
+        }
         /* General traffic row — non-attributed (Telegram/Reddit/direct/SEO) */
         .lb-row.general {
             background: linear-gradient(90deg, rgba(129, 140, 248, 0.08) 0%, transparent 70%);
@@ -589,17 +610,21 @@ async function refresh() {
             seenClicks.set(a.ambassador, a.clicks || 0);
 
             const captainRef = (trustConfig.captain || '').toLowerCase();
+            const firstMates = (trustConfig.first_mates || []).map(s => String(s).toLowerCase());
             const isCaptain = captainRef && a.ambassador === captainRef;
+            const isFirstMate = !isCaptain && firstMates.includes(a.ambassador);
             const captainBadge = isCaptain
                 ? '<span class="captain-badge"><span class="anchor">⚓</span>captain</span>'
-                : '';
+                : (isFirstMate
+                    ? '<span class="first-mate-badge"><span class="anchor">⚓</span>first mate</span>'
+                    : '');
 
             const overrides = trustConfig.avatar_overrides || {};
             const handleForAvatar = overrides[a.ambassador] || a.ambassador;
             const avatarSrc = `https://unavatar.io/x/${encodeURIComponent(handleForAvatar)}`;
 
             return `
-            <div class="lb-row${isFresh ? ' fresh' : ''}${isCaptain ? ' captain' : ''}">
+            <div class="lb-row${isFresh ? ' fresh' : ''}${isCaptain ? ' captain' : ''}${isFirstMate ? ' first-mate' : ''}">
                 <img class="avatar" src="${escHtml(avatarSrc)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.background='var(--surface-3)';this.src='data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 40 40%22><rect width=%2240%22 height=%2240%22 fill=%22%2325252e%22/><text x=%2220%22 y=%2226%22 text-anchor=%22middle%22 fill=%22%23E8912D%22 font-family=%22monospace%22 font-size=%2218%22 font-weight=%22700%22>${escHtml((a.ambassador||'').charAt(0).toUpperCase())}</text></svg>'">
                 <div class="ref-cell">
                     <span class="handle">@${escHtml(a.ambassador)}${captainBadge}</span>
