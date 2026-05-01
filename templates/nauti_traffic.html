@@ -631,7 +631,12 @@ function mergeAmbassadorRows(rows) {
         target.last_click_at = newest(target.last_click_at, row.last_click_at);
     });
 
-    const list = Array.from(merged.values());
+    const list = Array.from(merged.values()).filter(row =>
+        row.clicks > 0 ||
+        row.signups > 0 ||
+        row.paid_conversions > 0 ||
+        row.monthly_revenue_usd > 0
+    );
     list.forEach(row => {
         row.click_to_signup_rate_pct = row.clicks ? Number(((row.signups / row.clicks) * 100).toFixed(2)) : 0;
     });
