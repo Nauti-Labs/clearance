@@ -223,12 +223,13 @@
             </div>
             <div class="body">
                 {% if configured %}
-                    <form class="stack" method="post" action="{{ admin_path }}/login">
+                    <form class="stack" method="post" action="{{ admin_path }}/login" id="admin-login-form">
                         <label>
                             Admin PIN
-                            <input name="pin" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required autofocus>
+                            <input id="admin-pin-input" name="pin" type="tel" inputmode="numeric" autocomplete="one-time-code" enterkeyhint="go" pattern="[0-9]{6}" maxlength="6" required autofocus>
                         </label>
-                        <button class="primary" type="submit">Unlock</button>
+                        <button class="primary" type="submit" id="admin-login-button">Unlock</button>
+                        <div class="sub" id="admin-login-status" aria-live="polite"></div>
                     </form>
                 {% else %}
                     <div class="error">NAUTI_TRAFFIC_ADMIN_PIN is not configured on the server.</div>
@@ -401,5 +402,59 @@
         </section>
     {% endif %}
 </main>
+<script>
+(() => {
+    const form = document.getElementById('admin-login-form');
+    if (!form) return;
+
+    const pin = document.getElementById('admin-pin-input');
+    const button = document.getElementById('admin-login-button');
+    const status = document.getElementById('admin-login-status');
+    let submitting = false;
+    let autoSubmitTimer = null;
+
+    function normalizePin() {
+        pin.value = pin.value.replace(/\D/g, '').slice(0, 6);
+    }
+
+    function submitLogin() {
+        normalizePin();
+        if (submitting) return;
+        if (pin.value.length !== 6) {
+            pin.focus();
+            return;
+        }
+        submitting = true;
+        if (status) status.textContent = 'Unlocking...';
+        if (button) button.disabled = true;
+        if (form.requestSubmit) {
+            form.requestSubmit();
+        } else {
+            form.submit();
+        }
+    }
+
+    pin.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            submitLogin();
+        }
+    });
+
+    pin.addEventListener('input', () => {
+        normalizePin();
+        if (autoSubmitTimer) clearTimeout(autoSubmitTimer);
+        if (pin.value.length === 6) {
+            autoSubmitTimer = setTimeout(submitLogin, 150);
+        }
+    });
+
+    form.addEventListener('submit', (event) => {
+        if (submitting) return;
+        event.preventDefault();
+        submitLogin();
+    });
+})();
+</script>
 </body>
 </html>
