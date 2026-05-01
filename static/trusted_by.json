@@ -4,7 +4,17 @@
   "captain": "dipson_crypt",
 
   "_first_mates_doc": "Up to 10 First Mate badges total. Tier below Captain. Add ref names lowercased.",
-  "first_mates": ["plemeb", "x6r"],
+  "first_mates": ["plemab", "x6r"],
+
+  "ref_aliases": {
+    "_doc": "mistyped ref → canonical public ref",
+    "plemeb": "plemab"
+  },
+
+  "hidden_refs": [
+    "telegram",
+    "telegram_nafson"
+  ],
 
   "avatar_overrides": {
     "_doc": "ref → real X handle when ref doesn't match the handle",
@@ -15,8 +25,8 @@
   "avatar_urls": {
     "_doc": "ref → static avatar URL; used before X/unavatar lookup",
     "x6r": "/static/avatars/x6r.png",
-    "plemeb": "/static/avatars/plemeb.png",
-    "plemab": "/static/avatars/plemeb.png"
+    "plemab": "/static/avatars/plemab.png",
+    "plemeb": "/static/avatars/plemab.png"
   },
 
   "trusted_by": [

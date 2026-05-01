@@ -545,8 +545,18 @@ function escHtml(s) {
     return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
 }
 
+function cleanRef(ref) {
+    return String(ref || '').trim().toLowerCase();
+}
+
+function canonicalRef(ref) {
+    const clean = cleanRef(ref);
+    const aliases = trustConfig.ref_aliases || {};
+    return cleanRef(aliases[clean] || clean);
+}
+
 function avatarFor(ref) {
-    const cleanRef = String(ref || '').toLowerCase();
+    const cleanRef = canonicalRef(ref);
     const urls = trustConfig.avatar_urls || {};
     if (urls[cleanRef]) return urls[cleanRef];
 
@@ -556,6 +566,77 @@ function avatarFor(ref) {
         return handleOrUrl;
     }
     return `https://unavatar.io/x/${encodeURIComponent(handleOrUrl)}`;
+}
+
+function metric(row, key) {
+    return Number(row && row[key]) || 0;
+}
+
+function tier(row, key) {
+    return row && row[key] ? row[key] : { count: 0, monthly_revenue_usd: 0 };
+}
+
+function newest(a, b) {
+    if (!a) return b;
+    if (!b) return a;
+    return a > b ? a : b;
+}
+
+function oldest(a, b) {
+    if (!a) return b;
+    if (!b) return a;
+    return a < b ? a : b;
+}
+
+function mergeAmbassadorRows(rows) {
+    const hidden = new Set((trustConfig.hidden_refs || []).map(cleanRef));
+    const merged = new Map();
+
+    (rows || []).forEach(row => {
+        const originalRef = cleanRef(row.ambassador);
+        const ref = canonicalRef(originalRef);
+        if (!ref || hidden.has(originalRef) || hidden.has(ref)) return;
+
+        if (!merged.has(ref)) {
+            merged.set(ref, {
+                ...row,
+                ambassador: ref,
+                tracked_link: `${window.location.origin}/r/${encodeURIComponent(ref)}`,
+                clicks: 0,
+                signups: 0,
+                free_signups: 0,
+                pro: { count: 0, monthly_revenue_usd: 0 },
+                scale: { count: 0, monthly_revenue_usd: 0 },
+                paid_conversions: 0,
+                monthly_revenue_usd: 0,
+                first_click_at: null,
+                last_click_at: null,
+            });
+        }
+
+        const target = merged.get(ref);
+        const pro = tier(row, 'pro');
+        const scale = tier(row, 'scale');
+
+        target.clicks += metric(row, 'clicks');
+        target.signups += metric(row, 'signups');
+        target.free_signups += metric(row, 'free_signups');
+        target.pro.count += metric(pro, 'count');
+        target.pro.monthly_revenue_usd += metric(pro, 'monthly_revenue_usd');
+        target.scale.count += metric(scale, 'count');
+        target.scale.monthly_revenue_usd += metric(scale, 'monthly_revenue_usd');
+        target.paid_conversions += metric(row, 'paid_conversions');
+        target.monthly_revenue_usd += metric(row, 'monthly_revenue_usd');
+        target.first_click_at = oldest(target.first_click_at, row.first_click_at);
+        target.last_click_at = newest(target.last_click_at, row.last_click_at);
+    });
+
+    const list = Array.from(merged.values());
+    list.forEach(row => {
+        row.click_to_signup_rate_pct = row.clicks ? Number(((row.signups / row.clicks) * 100).toFixed(2)) : 0;
+    });
+    list.sort((a, b) => (b.clicks - a.clicks) || (b.paid_conversions - a.paid_conversions) || a.ambassador.localeCompare(b.ambassador));
+    return list;
 }
 
 function fmtTime(iso) {
@@ -583,7 +664,7 @@ async function refresh() {
         const r = await fetch('/v1/traffic', { cache: 'no-store' });
         if (!r.ok) throw new Error('http ' + r.status);
         const data = await r.json();
-        const ambs = data.ambassadors || [];
+        const ambs = mergeAmbassadorRows(data.ambassadors || []);
 
         // General (non-attributed) traffic row — pinned at top of leaderboard
         const gen = data.general_traffic || null;
@@ -600,7 +681,7 @@ async function refresh() {
                 <div class="avatar">🌐</div>
                 <div class="ref-cell">
                     <span class="handle">General Traffic<span class="general-badge">organic</span></span>
-                    <span class="meta">Telegram · Reddit · direct · SEO</span>
+                    <span class="meta">Reddit · direct · SEO</span>
                 </div>
                 <div class="num ${(gen.clicks||0)===0?'zero':''}">${(gen.clicks||0).toLocaleString()}</div>
                 <div class="num ${(gen.free_signups||0)>0?'hot':'zero'}">${(gen.free_signups||0).toLocaleString()}</div>
