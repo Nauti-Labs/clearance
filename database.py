@@ -343,6 +343,12 @@ async def init_db():
             created_at TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS traffic_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
         CREATE INDEX IF NOT EXISTS idx_clearances_api_key ON clearances(api_key_id);
         CREATE INDEX IF NOT EXISTS idx_clearances_status ON clearances(status);
         CREATE INDEX IF NOT EXISTS idx_audit_clearance ON audit_log(clearance_id);

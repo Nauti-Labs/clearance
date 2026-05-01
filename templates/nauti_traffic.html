@@ -516,7 +516,7 @@ let trustConfig = { trusted_by: [], onboarding: [], captain: null };
 
 async function loadTrustConfig() {
     try {
-        const r = await fetch('/static/trusted_by.json', { cache: 'no-cache' });
+        const r = await fetch('/v1/traffic/config', { cache: 'no-cache' });
         if (r.ok) trustConfig = await r.json();
     } catch (e) { /* fallback: empty */ }
     renderTrustStrip();

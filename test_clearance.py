@@ -27,6 +27,7 @@ class ClearanceSmokeTests(unittest.TestCase):
         os.environ["FAMILY_JUSTIN_PASSCODE"] = "nauti-justin"
         os.environ["FAMILY_NICOLE_PASSCODE"] = "nauti-nicole"
         os.environ["FAMILY_SYNC_TOKEN"] = "sync-secret"
+        os.environ["NAUTI_TRAFFIC_ADMIN_PIN"] = "123456"
 
         self.database = importlib.import_module("database")
         self.database = importlib.reload(self.database)
@@ -75,6 +76,53 @@ class ClearanceSmokeTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Nauti-Traffic", response.text)
         self.assertIn("Ambassador Leaderboard", response.text)
+
+    def test_nauti_traffic_admin_updates_display_config(self):
+        with TestClient(self.app_module.app) as client:
+            locked = client.get("/nauti-traffic/admin")
+            bad_login = client.post(
+                "/nauti-traffic/admin/login",
+                data={"pin": "000000"},
+                follow_redirects=False,
+            )
+            login = client.post(
+                "/nauti-traffic/admin/login",
+                data={"pin": "123456"},
+                follow_redirects=False,
+            )
+            unlocked = client.get("/nauti-traffic/admin")
+            saved = client.post(
+                "/nauti-traffic/admin/affiliate",
+                data={"ref": "bhamzy", "badge": "first_mate", "avatar_url": "", "x_handle": "bhamzy"},
+                follow_redirects=False,
+            )
+            alias = client.post(
+                "/nauti-traffic/admin/alias",
+                data={"alias": "bhamzi", "target": "bhamzy"},
+                follow_redirects=False,
+            )
+            hidden = client.post(
+                "/nauti-traffic/admin/hide",
+                data={"ref": "telegram", "action": "hide"},
+                follow_redirects=False,
+            )
+            config = client.get("/v1/traffic/config")
+
+        self.assertEqual(locked.status_code, 200)
+        self.assertIn("PIN Required", locked.text)
+        self.assertEqual(bad_login.status_code, 303)
+        self.assertEqual(login.status_code, 303)
+        self.assertIn("nauti_traffic_admin", login.headers.get("set-cookie", ""))
+        self.assertEqual(unlocked.status_code, 200)
+        self.assertIn("Affiliate Control", unlocked.text)
+        self.assertEqual(saved.status_code, 303)
+        self.assertEqual(alias.status_code, 303)
+        self.assertEqual(hidden.status_code, 303)
+        payload = config.json()
+        self.assertIn("bhamzy", payload["first_mates"])
+        self.assertEqual(payload["ref_aliases"]["bhamzi"], "bhamzy")
+        self.assertIn("telegram", payload["hidden_refs"])
+        self.assertEqual(payload["avatar_overrides"]["bhamzy"], "bhamzy")
 
     def test_paid_tier_fulfillment_issues_key_and_is_idempotent(self):
         import asyncio

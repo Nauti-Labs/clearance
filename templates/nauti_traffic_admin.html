@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex,nofollow">
+    <title>Nauti-Traffic Admin</title>
+    <style>
+        :root {
+            --bg: #0e0e13;
+            --surface: #1a1a22;
+            --surface-2: #20202a;
+            --border: #2f3039;
+            --text: #f1f1f4;
+            --muted: #92929d;
+            --amber: #E8912D;
+            --green: #4ade80;
+            --red: #fb7185;
+            --font: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            --mono: "SF Mono", Consolas, monospace;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--font);
+            letter-spacing: 0;
+        }
+        a { color: var(--amber); text-decoration: none; }
+        .shell {
+            width: min(1120px, calc(100% - 32px));
+            margin: 0 auto;
+            padding: 32px 0 48px;
+        }
+        .topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 18px;
+            padding-bottom: 18px;
+            border-bottom: 1px solid var(--border);
+        }
+        .brand {
+            font-size: 19px;
+            font-weight: 800;
+        }
+        .brand span {
+            color: var(--amber);
+            font-family: var(--mono);
+            font-size: 13px;
+            margin-right: 8px;
+        }
+        .nav {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .btn, button {
+            min-height: 38px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--surface-2);
+            color: var(--text);
+            padding: 0 13px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .btn.primary, button.primary {
+            background: var(--amber);
+            border-color: var(--amber);
+            color: #17120b;
+        }
+        .btn.danger, button.danger {
+            color: var(--red);
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(320px, 0.8fr);
+            gap: 16px;
+            margin-top: 18px;
+        }
+        .panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        .panel-head {
+            padding: 16px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            align-items: center;
+        }
+        h1, h2 {
+            margin: 0;
+            line-height: 1.15;
+        }
+        h1 { font-size: 28px; margin-top: 22px; }
+        h2 { font-size: 15px; }
+        .sub, .muted {
+            color: var(--muted);
+            font-family: var(--mono);
+            font-size: 12px;
+        }
+        .body { padding: 16px; }
+        .notice, .error {
+            margin-top: 16px;
+            border-radius: 8px;
+            padding: 12px 14px;
+            font-family: var(--mono);
+            font-size: 12px;
+        }
+        .notice { background: rgba(74, 222, 128, 0.12); color: var(--green); }
+        .error { background: rgba(251, 113, 133, 0.12); color: var(--red); }
+        form.stack {
+            display: grid;
+            gap: 12px;
+        }
+        label {
+            display: grid;
+            gap: 7px;
+            color: var(--muted);
+            font-family: var(--mono);
+            font-size: 11px;
+            text-transform: uppercase;
+        }
+        input, select {
+            width: 100%;
+            min-height: 40px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: #111118;
+            color: var(--text);
+            padding: 0 11px;
+            font: 14px var(--font);
+        }
+        .row {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 11px 16px;
+            border-bottom: 1px solid rgba(47, 48, 57, 0.72);
+            text-align: left;
+            font-size: 13px;
+        }
+        th {
+            color: var(--muted);
+            font: 10px var(--mono);
+            text-transform: uppercase;
+        }
+        .num {
+            text-align: right;
+            font-family: var(--mono);
+        }
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            min-height: 24px;
+            padding: 0 8px;
+            border-radius: 5px;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            color: var(--muted);
+            font: 11px var(--mono);
+            margin: 3px 5px 3px 0;
+        }
+        .pill.hot { color: #111; background: var(--amber); border-color: var(--amber); font-weight: 800; }
+        .inline-form {
+            display: inline;
+        }
+        .mini {
+            min-height: 28px;
+            padding: 0 8px;
+            font-size: 11px;
+        }
+        .login {
+            width: min(430px, 100%);
+            margin: 72px auto 0;
+        }
+        @media (max-width: 800px) {
+            .grid, .row { grid-template-columns: 1fr; }
+            .topbar { align-items: flex-start; flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+<main class="shell">
+    <header class="topbar">
+        <div class="brand"><span>▸</span>Nauti-Traffic Admin</div>
+        <nav class="nav">
+            <a class="btn" href="/nauti-traffic">Leaderboard</a>
+            {% if logged_in %}
+                <form method="post" action="/nauti-traffic/admin/logout">
+                    <button type="submit">Lock</button>
+                </form>
+            {% endif %}
+        </nav>
+    </header>
+
+    {% if error %}
+        <div class="error">{{ error }}</div>
+    {% endif %}
+    {% if notice %}
+        <div class="notice">{{ notice }}</div>
+    {% endif %}
+
+    {% if not logged_in %}
+        <section class="panel login">
+            <div class="panel-head">
+                <h2>PIN Required</h2>
+                <span class="sub">6 digits</span>
+            </div>
+            <div class="body">
+                {% if configured %}
+                    <form class="stack" method="post" action="/nauti-traffic/admin/login">
+                        <label>
+                            Admin PIN
+                            <input name="pin" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required autofocus>
+                        </label>
+                        <button class="primary" type="submit">Unlock</button>
+                    </form>
+                {% else %}
+                    <div class="error">NAUTI_TRAFFIC_ADMIN_PIN is not configured on the server.</div>
+                {% endif %}
+            </div>
+        </section>
+    {% else %}
+        <h1>Affiliate Control</h1>
+        <p class="sub">First Mate slots: {{ config.first_mates|length }} / {{ first_mate_limit }}</p>
+
+        <section class="grid">
+            <div class="panel">
+                <div class="panel-head">
+                    <h2>Add Or Update Affiliate</h2>
+                    <span class="sub">{{ base_url }}/r/&lt;ref&gt;</span>
+                </div>
+                <div class="body">
+                    <form class="stack" method="post" action="/nauti-traffic/admin/affiliate">
+                        <div class="row">
+                            <label>
+                                Ref
+                                <input name="ref" placeholder="bhamzy" pattern="[A-Za-z0-9_-]{1,64}" required>
+                            </label>
+                            <label>
+                                Badge
+                                <select name="badge">
+                                    <option value="none">None</option>
+                                    <option value="first_mate">First Mate</option>
+                                    <option value="captain">Captain</option>
+                                </select>
+                            </label>
+                        </div>
+                        <label>
+                            Avatar URL
+                            <input name="avatar_url" placeholder="/static/avatars/name.png or https://...">
+                        </label>
+                        <label>
+                            X Handle For Avatar
+                            <input name="x_handle" placeholder="handle_without_at">
+                        </label>
+                        <button class="primary" type="submit">Save Affiliate</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-head">
+                    <h2>Current Badges</h2>
+                    <span class="sub">live config</span>
+                </div>
+                <div class="body">
+                    <div class="muted">Captain</div>
+                    <div>
+                        {% if config.captain %}
+                            <span class="pill hot">@{{ config.captain }}</span>
+                        {% else %}
+                            <span class="pill">none</span>
+                        {% endif %}
+                    </div>
+                    <div class="muted" style="margin-top:14px;">First Mates</div>
+                    <div>
+                        {% for ref in config.first_mates %}
+                            <span class="pill hot">@{{ ref }}</span>
+                        {% else %}
+                            <span class="pill">none</span>
+                        {% endfor %}
+                    </div>
+                    <div class="muted" style="margin-top:14px;">Hidden Refs</div>
+                    <div>
+                        {% for ref in config.hidden_refs %}
+                            <span class="pill">@{{ ref }}</span>
+                        {% else %}
+                            <span class="pill">none</span>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="grid">
+            <div class="panel">
+                <div class="panel-head">
+                    <h2>Aliases</h2>
+                    <span class="sub">typo → canonical</span>
+                </div>
+                <div class="body">
+                    <form class="stack" method="post" action="/nauti-traffic/admin/alias">
+                        <div class="row">
+                            <label>
+                                Alias
+                                <input name="alias" placeholder="plemeb" pattern="[A-Za-z0-9_-]{1,64}" required>
+                            </label>
+                            <label>
+                                Canonical Ref
+                                <input name="target" placeholder="plemab" pattern="[A-Za-z0-9_-]{1,64}" required>
+                            </label>
+                        </div>
+                        <button type="submit">Save Alias</button>
+                    </form>
+                    <div style="margin-top:14px;">
+                        {% for alias, target in config.ref_aliases.items() %}
+                            {% if alias != "_doc" %}
+                                <span class="pill">@{{ alias }} → @{{ target }}</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="pill">none</span>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-head">
+                    <h2>Hide Or Show Ref</h2>
+                    <span class="sub">display only</span>
+                </div>
+                <div class="body">
+                    <form class="stack" method="post" action="/nauti-traffic/admin/hide">
+                        <label>
+                            Ref
+                            <input name="ref" placeholder="telegram_nafson" pattern="[A-Za-z0-9_-]{1,64}" required>
+                        </label>
+                        <div class="row">
+                            <button class="danger" name="action" value="hide" type="submit">Hide</button>
+                            <button name="action" value="show" type="submit">Show</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </section>
+
+        <section class="panel" style="margin-top:16px;">
+            <div class="panel-head">
+                <h2>Live Rows</h2>
+                <span class="sub">{{ stats.count or 0 }} raw refs</span>
+            </div>
+            {% if stats.ambassadors %}
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Ref</th>
+                            <th class="num">Clicks</th>
+                            <th class="num">Free</th>
+                            <th class="num">Paid</th>
+                            <th>Link</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in stats.ambassadors %}
+                            <tr>
+                                <td>@{{ row.ambassador }}</td>
+                                <td class="num">{{ row.clicks }}</td>
+                                <td class="num">{{ row.free_signups }}</td>
+                                <td class="num">{{ row.paid_conversions }}</td>
+                                <td><a href="{{ row.tracked_link }}">{{ row.tracked_link }}</a></td>
+                                <td class="num">
+                                    <form class="inline-form" method="post" action="/nauti-traffic/admin/hide">
+                                        <input type="hidden" name="ref" value="{{ row.ambassador }}">
+                                        <button class="mini danger" name="action" value="hide" type="submit">Hide</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <div class="body muted">No tracked refs yet.</div>
+            {% endif %}
+        </section>
+    {% endif %}
+</main>
+</body>
+</html>

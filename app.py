@@ -12,9 +12,10 @@ import secrets
 import hashlib
 from datetime import datetime, timedelta, timezone
 from contextlib import asynccontextmanager
+from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import FastAPI, HTTPException, Header, Request, Depends, Response
+from fastapi import FastAPI, HTTPException, Header, Request, Depends, Response, Form
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -130,6 +131,11 @@ templates = Jinja2Templates(directory="templates")
 REF_COOKIE = "clearance_ref"
 REF_COOKIE_DAYS = 30
 ADMIN_KEY = os.getenv("ADMIN_KEY", "")
+TRAFFIC_ADMIN_PIN = os.getenv("NAUTI_TRAFFIC_ADMIN_PIN", "").strip()
+TRAFFIC_ADMIN_COOKIE = "nauti_traffic_admin"
+TRAFFIC_ADMIN_SESSION_HOURS = int(os.getenv("NAUTI_TRAFFIC_ADMIN_SESSION_HOURS", "12"))
+TRAFFIC_CONFIG_KEY = "nauti_traffic_config"
+TRUSTED_BY_PATH = Path(__file__).resolve().parent / "static" / "trusted_by.json"
 _REF_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 _BOT_RE = re.compile(r"bot|crawler|spider|preview|fetch|monitoring", re.IGNORECASE)
 
@@ -204,6 +210,136 @@ def _require_admin(x_admin_key):
         raise HTTPException(status_code=503, detail="ADMIN_KEY env var not set on server.")
     if not x_admin_key or x_admin_key != ADMIN_KEY:
         raise HTTPException(status_code=401, detail="invalid admin key")
+
+
+def _dedupe(values) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values or []:
+        clean = _validate_ref(value)
+        if clean and clean not in seen:
+            seen.add(clean)
+            result.append(clean)
+    return result
+
+
+def _clean_mapping(mapping) -> dict[str, str]:
+    if not isinstance(mapping, dict):
+        return {}
+    cleaned: dict[str, str] = {}
+    for key, value in mapping.items():
+        clean_key = _validate_ref(key)
+        if not clean_key:
+            continue
+        if isinstance(value, str) and value.strip():
+            cleaned[clean_key] = value.strip()
+    return cleaned
+
+
+def _default_traffic_config() -> dict:
+    try:
+        payload = json.loads(TRUSTED_BY_PATH.read_text())
+    except Exception:
+        payload = {}
+    return _normalize_traffic_config(payload)
+
+
+def _normalize_traffic_config(config: dict | None) -> dict:
+    if not isinstance(config, dict):
+        config = {}
+
+    captain = _validate_ref(config.get("captain"))
+    return {
+        "_comment": config.get("_comment", ""),
+        "captain": captain,
+        "_first_mates_doc": config.get(
+            "_first_mates_doc",
+            "Up to 10 First Mate badges total. Tier below Captain. Add ref names lowercased.",
+        ),
+        "first_mates": _dedupe(config.get("first_mates"))[:10],
+        "ref_aliases": _clean_mapping(config.get("ref_aliases")),
+        "hidden_refs": _dedupe(config.get("hidden_refs")),
+        "avatar_overrides": _clean_mapping(config.get("avatar_overrides")),
+        "avatar_urls": _clean_mapping(config.get("avatar_urls")),
+        "trusted_by": config.get("trusted_by") if isinstance(config.get("trusted_by"), list) else [],
+        "onboarding": config.get("onboarding") if isinstance(config.get("onboarding"), list) else [],
+    }
+
+
+def _merge_traffic_config(base: dict, override: dict | None) -> dict:
+    merged = json.loads(json.dumps(base))
+    if isinstance(override, dict):
+        for key in ("captain", "first_mates", "trusted_by", "onboarding", "hidden_refs"):
+            if key in override:
+                merged[key] = override[key]
+        for key in ("ref_aliases", "avatar_overrides", "avatar_urls"):
+            if isinstance(override.get(key), dict):
+                current = merged.get(key) if isinstance(merged.get(key), dict) else {}
+                current.update(override[key])
+                merged[key] = current
+    return _normalize_traffic_config(merged)
+
+
+async def load_traffic_config() -> dict:
+    base = _default_traffic_config()
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT value FROM traffic_settings WHERE key = ?",
+            (TRAFFIC_CONFIG_KEY,),
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return base
+        try:
+            override = json.loads(row["value"])
+        except Exception:
+            override = {}
+        return _merge_traffic_config(base, override)
+    finally:
+        await db.close()
+
+
+async def save_traffic_config(config: dict) -> None:
+    clean_config = _normalize_traffic_config(config)
+    db = await get_db()
+    try:
+        await db.execute(
+            """INSERT INTO traffic_settings (key, value, updated_at)
+               VALUES (?, ?, ?)
+               ON CONFLICT(key) DO UPDATE SET
+                   value = excluded.value,
+                   updated_at = excluded.updated_at""",
+            (TRAFFIC_CONFIG_KEY, json.dumps(clean_config), now_iso()),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+
+def _make_traffic_admin_token() -> str:
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=TRAFFIC_ADMIN_SESSION_HOURS)
+    return jwt.encode(
+        {"scope": "nauti_traffic.admin", "expires_at": expires_at.isoformat()},
+        JWT_SECRET,
+        algorithm=JWT_ALGORITHM,
+    )
+
+
+def _traffic_admin_logged_in(request: Request) -> bool:
+    token = request.cookies.get(TRAFFIC_ADMIN_COOKIE)
+    if not token:
+        return False
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except JWTError:
+        return False
+    return payload.get("scope") == "nauti_traffic.admin"
+
+
+def _require_traffic_admin(request: Request) -> None:
+    if not _traffic_admin_logged_in(request):
+        raise HTTPException(status_code=303, headers={"Location": "/nauti-traffic/admin"})
 
 
 # --- Helpers ---
@@ -1625,6 +1761,169 @@ async def _general_traffic_payload() -> dict:
         }
     finally:
         await db.close()
+
+
+@app.get("/v1/traffic/config", tags=["Public"])
+async def public_traffic_config():
+    """Public display config for Nauti-Traffic. No visitor metadata."""
+    return await load_traffic_config()
+
+
+@app.get("/nauti-traffic/admin", response_class=HTMLResponse, tags=["Admin"])
+async def nauti_traffic_admin_page(request: Request):
+    configured = bool(re.fullmatch(r"\d{6}", TRAFFIC_ADMIN_PIN))
+    error = request.query_params.get("error")
+    notice = request.query_params.get("notice")
+    if not _traffic_admin_logged_in(request):
+        return templates.TemplateResponse(
+            request,
+            "nauti_traffic_admin.html",
+            {
+                "logged_in": False,
+                "configured": configured,
+                "error": error,
+                "notice": notice,
+                "config": {},
+                "stats": {},
+                "base_url": BASE_URL.rstrip("/"),
+                "first_mate_limit": 10,
+            },
+        )
+
+    config = await load_traffic_config()
+    stats = await public_traffic_leaderboard()
+    return templates.TemplateResponse(
+        request,
+        "nauti_traffic_admin.html",
+        {
+            "logged_in": True,
+            "configured": configured,
+            "error": error,
+            "notice": notice,
+            "config": config,
+            "stats": stats,
+            "base_url": BASE_URL.rstrip("/"),
+            "first_mate_limit": 10,
+        },
+    )
+
+
+@app.post("/nauti-traffic/admin/login", tags=["Admin"])
+async def nauti_traffic_admin_login(response: Response, pin: str = Form("")):
+    if not re.fullmatch(r"\d{6}", TRAFFIC_ADMIN_PIN):
+        return RedirectResponse(url="/nauti-traffic/admin?error=pin_not_configured", status_code=303)
+    if not secrets.compare_digest(pin.strip(), TRAFFIC_ADMIN_PIN):
+        return RedirectResponse(url="/nauti-traffic/admin?error=bad_pin", status_code=303)
+
+    redirect = RedirectResponse(url="/nauti-traffic/admin?notice=unlocked", status_code=303)
+    redirect.set_cookie(
+        TRAFFIC_ADMIN_COOKIE,
+        _make_traffic_admin_token(),
+        max_age=TRAFFIC_ADMIN_SESSION_HOURS * 3600,
+        httponly=True,
+        secure=not _is_local_url(BASE_URL),
+        samesite="lax",
+        path="/",
+    )
+    return redirect
+
+
+@app.post("/nauti-traffic/admin/logout", tags=["Admin"])
+async def nauti_traffic_admin_logout():
+    response = RedirectResponse(url="/nauti-traffic/admin?notice=locked", status_code=303)
+    response.delete_cookie(TRAFFIC_ADMIN_COOKIE, path="/")
+    return response
+
+
+@app.post("/nauti-traffic/admin/affiliate", tags=["Admin"])
+async def nauti_traffic_admin_affiliate(
+    request: Request,
+    ref: str = Form(...),
+    badge: str = Form("none"),
+    avatar_url: str = Form(""),
+    x_handle: str = Form(""),
+):
+    _require_traffic_admin(request)
+    clean_ref = _validate_ref(ref)
+    if not clean_ref:
+        return RedirectResponse(url="/nauti-traffic/admin?error=bad_ref", status_code=303)
+
+    config = await load_traffic_config()
+    first_mates = _dedupe(config.get("first_mates"))
+    hidden_refs = set(_dedupe(config.get("hidden_refs")))
+    hidden_refs.discard(clean_ref)
+
+    badge = badge.strip().lower()
+    if badge == "captain":
+        config["captain"] = clean_ref
+        first_mates = [item for item in first_mates if item != clean_ref]
+    elif badge == "first_mate":
+        if clean_ref != config.get("captain") and clean_ref not in first_mates:
+            if len(first_mates) >= 10:
+                return RedirectResponse(url="/nauti-traffic/admin?error=first_mates_full", status_code=303)
+            first_mates.append(clean_ref)
+    else:
+        first_mates = [item for item in first_mates if item != clean_ref]
+        if config.get("captain") == clean_ref:
+            config["captain"] = None
+
+    config["first_mates"] = first_mates
+    config["hidden_refs"] = sorted(hidden_refs)
+
+    if avatar_url.strip():
+        avatar_urls = config.get("avatar_urls") if isinstance(config.get("avatar_urls"), dict) else {}
+        avatar_urls[clean_ref] = avatar_url.strip()
+        config["avatar_urls"] = avatar_urls
+    if x_handle.strip():
+        handle = x_handle.strip().removeprefix("@")
+        avatar_overrides = config.get("avatar_overrides") if isinstance(config.get("avatar_overrides"), dict) else {}
+        avatar_overrides[clean_ref] = handle
+        config["avatar_overrides"] = avatar_overrides
+
+    await save_traffic_config(config)
+    return RedirectResponse(url=f"/nauti-traffic/admin?notice=affiliate_saved_{clean_ref}", status_code=303)
+
+
+@app.post("/nauti-traffic/admin/alias", tags=["Admin"])
+async def nauti_traffic_admin_alias(
+    request: Request,
+    alias: str = Form(...),
+    target: str = Form(...),
+):
+    _require_traffic_admin(request)
+    clean_alias = _validate_ref(alias)
+    clean_target = _validate_ref(target)
+    if not clean_alias or not clean_target:
+        return RedirectResponse(url="/nauti-traffic/admin?error=bad_alias", status_code=303)
+
+    config = await load_traffic_config()
+    aliases = config.get("ref_aliases") if isinstance(config.get("ref_aliases"), dict) else {}
+    aliases[clean_alias] = clean_target
+    config["ref_aliases"] = aliases
+    await save_traffic_config(config)
+    return RedirectResponse(url=f"/nauti-traffic/admin?notice=alias_saved_{clean_alias}", status_code=303)
+
+
+@app.post("/nauti-traffic/admin/hide", tags=["Admin"])
+async def nauti_traffic_admin_hide(
+    request: Request,
+    ref: str = Form(...),
+    action: str = Form("hide"),
+):
+    _require_traffic_admin(request)
+    clean_ref = _validate_ref(ref)
+    if not clean_ref:
+        return RedirectResponse(url="/nauti-traffic/admin?error=bad_ref", status_code=303)
+
+    config = await load_traffic_config()
+    hidden = set(_dedupe(config.get("hidden_refs")))
+    if action == "show":
+        hidden.discard(clean_ref)
+    else:
+        hidden.add(clean_ref)
+    config["hidden_refs"] = sorted(hidden)
+    await save_traffic_config(config)
+    return RedirectResponse(url=f"/nauti-traffic/admin?notice=visibility_saved_{clean_ref}", status_code=303)
 
 
 @app.get("/v1/traffic", tags=["Public"])
