@@ -68,6 +68,14 @@ class ClearanceSmokeTests(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertIn("Stripe checkout is not configured", response.json()["detail"])
 
+    def test_nauti_traffic_titlecase_route_serves_dashboard(self):
+        with TestClient(self.app_module.app) as client:
+            response = client.get("/Nauti-Traffic")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Nauti-Traffic", response.text)
+        self.assertIn("Ambassador Leaderboard", response.text)
+
     def test_paid_tier_fulfillment_issues_key_and_is_idempotent(self):
         import asyncio
 

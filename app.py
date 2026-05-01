@@ -1667,8 +1667,19 @@ async def public_traffic_leaderboard():
 async def nauti_traffic_page(request: Request):
     """Public Nauti-Traffic leaderboard page."""
     return templates.TemplateResponse(
+        request,
         "nauti_traffic.html",
-        {"request": request, "base_url": BASE_URL.rstrip("/")},
+        {"base_url": BASE_URL.rstrip("/")},
+    )
+
+
+@app.get("/Nauti-Traffic", response_class=HTMLResponse, tags=["Pages"], include_in_schema=False)
+async def nauti_traffic_page_titlecase(request: Request):
+    """Title-case alias for the public Nauti-Traffic leaderboard page."""
+    return templates.TemplateResponse(
+        request,
+        "nauti_traffic.html",
+        {"base_url": BASE_URL.rstrip("/")},
     )
 
 
