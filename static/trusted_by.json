@@ -4,7 +4,7 @@
   "captain": "dipson_crypt",
 
   "_first_mates_doc": "Up to 10 First Mate badges total. Tier below Captain. Add ref names lowercased.",
-  "first_mates": ["plemab", "x6r"],
+  "first_mates": ["plemeb", "x6r"],
 
   "avatar_overrides": {
     "_doc": "ref → real X handle when ref doesn't match the handle",

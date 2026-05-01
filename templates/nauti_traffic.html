@@ -596,6 +596,7 @@ async function refresh() {
                 <div class="num c-rev rev ${(gen.monthly_revenue_usd||0)===0?'zero':''}">$${(gen.monthly_revenue_usd||0).toFixed(0)}</div>
             </div>`;
         }
+        const firstMates = (trustConfig.first_mates || []).map(s => String(s).toLowerCase());
         const rowsHtml = ambs.map(a => {
             totalClicks += (a.clicks || 0);
             totalPaid += (a.paid_conversions || 0);
@@ -610,7 +611,6 @@ async function refresh() {
             seenClicks.set(a.ambassador, a.clicks || 0);
 
             const captainRef = (trustConfig.captain || '').toLowerCase();
-            const firstMates = (trustConfig.first_mates || []).map(s => String(s).toLowerCase());
             const isCaptain = captainRef && a.ambassador === captainRef;
             const isFirstMate = !isCaptain && firstMates.includes(a.ambassador);
             const captainBadge = isCaptain
@@ -638,6 +638,27 @@ async function refresh() {
             </div>`;
         }).join('');
 
+        const visibleRefs = new Set(ambs.map(a => a.ambassador));
+        const reservedFirstMates = firstMates.filter(ref => ref && !visibleRefs.has(ref));
+        const reservedFirstMateHtml = reservedFirstMates.map(ref => {
+            const overrides = trustConfig.avatar_overrides || {};
+            const handleForAvatar = overrides[ref] || ref;
+            const avatarSrc = `https://unavatar.io/x/${encodeURIComponent(handleForAvatar)}`;
+            return `
+            <div class="lb-row first-mate">
+                <img class="avatar" src="${escHtml(avatarSrc)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.background='var(--surface-3)';this.src='data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 40 40%22><rect width=%2240%22 height=%2240%22 fill=%22%2325252e%22/><text x=%2220%22 y=%2226%22 text-anchor=%22middle%22 fill=%22%23E8912D%22 font-family=%22monospace%22 font-size=%2218%22 font-weight=%22700%22>${escHtml(ref.charAt(0).toUpperCase())}</text></svg>'">
+                <div class="ref-cell">
+                    <span class="handle">@${escHtml(ref)}<span class="first-mate-badge"><span class="anchor">⚓</span>first mate</span></span>
+                    <span class="meta">awaiting first click</span>
+                </div>
+                <div class="num zero">0</div>
+                <div class="num zero">0</div>
+                <div class="num c-pro zero">0</div>
+                <div class="num c-scale zero">0</div>
+                <div class="num c-rev zero">$0</div>
+            </div>`;
+        }).join('');
+
         // Append onboarding rows (greyed out, honest "pending" labels)
         const onboarding = trustConfig.onboarding || [];
         const onboardingHtml = onboarding.map(o => {
@@ -658,12 +679,12 @@ async function refresh() {
             </div>`;
         }).join('');
 
-        const combinedHtml = (ambs.length === 0 && onboarding.length === 0 && !gen)
+        const combinedHtml = (ambs.length === 0 && reservedFirstMates.length === 0 && onboarding.length === 0 && !gen)
             ? '<div class="panel-msg"><span class="glyph">▸</span>no ambassadors yet</div>'
-            : (generalHtml + rowsHtml + onboardingHtml);
+            : (generalHtml + rowsHtml + reservedFirstMateHtml + onboardingHtml);
         document.getElementById('lb-body').innerHTML = combinedHtml;
 
-        document.getElementById('agg-count').textContent = (ambs.length + onboarding.length);
+        document.getElementById('agg-count').textContent = (ambs.length + reservedFirstMates.length + onboarding.length);
         document.getElementById('agg-clicks').textContent = totalClicks.toLocaleString();
         document.getElementById('agg-paid').textContent = totalPaid.toLocaleString();
         document.getElementById('agg-rev').textContent = totalRev.toFixed(0);
