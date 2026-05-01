@@ -109,6 +109,7 @@ class ClearanceSmokeTests(unittest.TestCase):
             pretty_alias = client.get("/r/bhamzi", follow_redirects=False)
             vanity_alias = client.get("/bhamzi", follow_redirects=False)
             unknown_vanity = client.get("/not_configured", follow_redirects=False)
+            health = client.get("/health")
             config = client.get("/v1/traffic/config")
 
         self.assertEqual(locked.status_code, 200)
@@ -126,6 +127,7 @@ class ClearanceSmokeTests(unittest.TestCase):
         self.assertEqual(vanity_alias.status_code, 302)
         self.assertIn("clearance_ref=bhamzy", vanity_alias.headers.get("set-cookie", ""))
         self.assertEqual(unknown_vanity.status_code, 404)
+        self.assertEqual(health.status_code, 200)
         payload = config.json()
         self.assertIn("bhamzy", payload["first_mates"])
         self.assertEqual(payload["ref_aliases"]["bhamzi"], "bhamzy")

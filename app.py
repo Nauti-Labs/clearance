@@ -2228,18 +2228,6 @@ async def favicon():
     return RedirectResponse(url="/static/favicon.svg")
 
 
-@app.get("/{ambassador}", tags=["Pages"], include_in_schema=False)
-async def ambassador_vanity_redirect(ambassador: str, request: Request):
-    """Accept common copied links like /davidfx and canonicalize configured refs."""
-    ref = await canonical_traffic_ref(ambassador, require_configured=True)
-    if not ref:
-        raise HTTPException(status_code=404, detail="Not Found")
-    await _record_visit(request, ref)
-    response = RedirectResponse(url="/", status_code=302)
-    _set_ref_cookie(response, ref)
-    return response
-
-
 # --- Payments ---
 
 OTHER_ASSET_POLICY = (
@@ -2471,6 +2459,18 @@ async def payment_info():
 @app.get("/health", tags=["System"])
 async def health():
     return {"status": "operational", "service": "clearance", "version": "1.0.0"}
+
+
+@app.get("/{ambassador}", tags=["Pages"], include_in_schema=False)
+async def ambassador_vanity_redirect(ambassador: str, request: Request):
+    """Accept common copied links like /davidfx and canonicalize configured refs."""
+    ref = await canonical_traffic_ref(ambassador, require_configured=True)
+    if not ref:
+        raise HTTPException(status_code=404, detail="Not Found")
+    await _record_visit(request, ref)
+    response = RedirectResponse(url="/", status_code=302)
+    _set_ref_cookie(response, ref)
+    return response
 
 
 # --- Run ---
