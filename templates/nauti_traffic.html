@@ -545,6 +545,19 @@ function escHtml(s) {
     return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
 }
 
+function avatarFor(ref) {
+    const cleanRef = String(ref || '').toLowerCase();
+    const urls = trustConfig.avatar_urls || {};
+    if (urls[cleanRef]) return urls[cleanRef];
+
+    const overrides = trustConfig.avatar_overrides || {};
+    const handleOrUrl = overrides[cleanRef] || cleanRef;
+    if (/^(https?:)?\/\//.test(handleOrUrl) || handleOrUrl.startsWith('/')) {
+        return handleOrUrl;
+    }
+    return `https://unavatar.io/x/${encodeURIComponent(handleOrUrl)}`;
+}
+
 function fmtTime(iso) {
     if (!iso) return '—';
     const d = new Date(iso);
@@ -619,9 +632,7 @@ async function refresh() {
                     ? '<span class="first-mate-badge"><span class="anchor">⚓</span>first mate</span>'
                     : '');
 
-            const overrides = trustConfig.avatar_overrides || {};
-            const handleForAvatar = overrides[a.ambassador] || a.ambassador;
-            const avatarSrc = `https://unavatar.io/x/${encodeURIComponent(handleForAvatar)}`;
+            const avatarSrc = avatarFor(a.ambassador);
 
             return `
             <div class="lb-row${isFresh ? ' fresh' : ''}${isCaptain ? ' captain' : ''}${isFirstMate ? ' first-mate' : ''}">
@@ -641,9 +652,7 @@ async function refresh() {
         const visibleRefs = new Set(ambs.map(a => a.ambassador));
         const reservedFirstMates = firstMates.filter(ref => ref && !visibleRefs.has(ref));
         const reservedFirstMateHtml = reservedFirstMates.map(ref => {
-            const overrides = trustConfig.avatar_overrides || {};
-            const handleForAvatar = overrides[ref] || ref;
-            const avatarSrc = `https://unavatar.io/x/${encodeURIComponent(handleForAvatar)}`;
+            const avatarSrc = avatarFor(ref);
             return `
             <div class="lb-row first-mate">
                 <img class="avatar" src="${escHtml(avatarSrc)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.background='var(--surface-3)';this.src='data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 40 40%22><rect width=%2240%22 height=%2240%22 fill=%22%2325252e%22/><text x=%2220%22 y=%2226%22 text-anchor=%22middle%22 fill=%22%23E8912D%22 font-family=%22monospace%22 font-size=%2218%22 font-weight=%22700%22>${escHtml(ref.charAt(0).toUpperCase())}</text></svg>'">

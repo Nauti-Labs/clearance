@@ -12,6 +12,13 @@
     "emmacrypto": "00Q__"
   },
 
+  "avatar_urls": {
+    "_doc": "ref → static avatar URL; used before X/unavatar lookup",
+    "x6r": "/static/avatars/x6r.png",
+    "plemeb": "/static/avatars/plemeb.png",
+    "plemab": "/static/avatars/plemeb.png"
+  },
+
   "trusted_by": [
     { "handle": "Dipson_Crypt", "label": "@Dipson_Crypt" },
     { "handle": "Nauti_Labs",   "label": "@Nauti_Labs" }
