@@ -28,6 +28,9 @@
             --amber: #E8912D;
             --amber-bright: #f0a040;
             --amber-soft: rgba(232, 145, 45, 0.12);
+            --silver: #aeb9c8;
+            --silver-bright: #e8edf5;
+            --silver-soft: rgba(174, 185, 200, 0.11);
             --text: #ececf0;
             --text-dim: #b8b8c0;
             --muted: #7a7a85;
@@ -262,26 +265,38 @@
         .captain-badge .anchor {
             font-size: 11px;
         }
+        /* FIRST MATE row - cool silver treatment */
+        .lb-row.first-mate {
+            background:
+                linear-gradient(90deg, var(--silver-soft) 0%, transparent 70%);
+            border-left: 3px solid var(--silver);
+            padding-left: 17px;
+        }
         .first-mate-badge {
             display: inline-flex; align-items: center; gap: 4px;
             font-family: var(--font-mono);
-            font-size: 9px; font-weight: 700;
-            color: #c9d4e5;
-            background: rgba(126, 151, 176, 0.18);
-            border: 1px solid rgba(126, 151, 176, 0.35);
+            font-size: 9px; font-weight: 800;
+            color: #11151c;
+            background: linear-gradient(135deg, var(--silver-bright) 0%, #9eacbf 100%);
+            border: 1px solid rgba(232, 237, 245, 0.45);
             padding: 2px 7px;
             border-radius: 4px;
             letter-spacing: 0.08em;
             text-transform: uppercase;
             margin-left: 8px;
+            box-shadow:
+                0 2px 8px rgba(174, 185, 200, 0.22),
+                inset 0 1px 0 rgba(255, 255, 255, 0.42);
         }
         .first-mate-badge .anchor {
             font-size: 10px;
-            color: #a0b3c8;
+            color: #252b35;
         }
         .lb-row.first-mate .avatar {
-            border-color: rgba(126, 151, 176, 0.45);
-            box-shadow: 0 0 0 1px rgba(126, 151, 176, 0.25);
+            border: 2px solid var(--silver);
+            box-shadow:
+                0 0 12px rgba(174, 185, 200, 0.24),
+                0 0 0 1px rgba(232, 237, 245, 0.12);
         }
         /* General traffic row — non-attributed (Telegram/Reddit/direct/SEO) */
         .lb-row.general {
