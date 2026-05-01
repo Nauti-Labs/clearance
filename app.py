@@ -133,7 +133,8 @@ REF_COOKIE_DAYS = 30
 ADMIN_KEY = os.getenv("ADMIN_KEY", "")
 TRAFFIC_ADMIN_PIN = os.getenv("NAUTI_TRAFFIC_ADMIN_PIN", "").strip()
 TRAFFIC_ADMIN_PATH_TOKEN = os.getenv("NAUTI_TRAFFIC_ADMIN_PATH_TOKEN", "").strip()
-TRAFFIC_ADMIN_COOKIE = "nauti_traffic_admin"
+TRAFFIC_ADMIN_COOKIE = "nauti_traffic_admin_v2"
+TRAFFIC_ADMIN_LEGACY_COOKIE = "nauti_traffic_admin"
 TRAFFIC_ADMIN_COOKIE_PATH = "/nauti-traffic/admin/"
 TRAFFIC_ADMIN_SESSION_HOURS = int(os.getenv("NAUTI_TRAFFIC_ADMIN_SESSION_HOURS", "12"))
 TRAFFIC_CONFIG_KEY = "nauti_traffic_config"
@@ -374,7 +375,22 @@ def _verify_traffic_admin_path(access_token: str) -> str:
 
 def _traffic_admin_redirect(access_token: str, query: str = "") -> RedirectResponse:
     suffix = f"?{query}" if query else ""
-    return RedirectResponse(url=f"{_traffic_admin_path(access_token)}{suffix}", status_code=303)
+    response = RedirectResponse(url=f"{_traffic_admin_path(access_token)}{suffix}", status_code=303)
+    _no_store(response)
+    return response
+
+
+def _no_store(response):
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
+
+def _clear_traffic_admin_cookies(response, admin_path: str) -> None:
+    for cookie_name in (TRAFFIC_ADMIN_COOKIE, TRAFFIC_ADMIN_LEGACY_COOKIE):
+        for cookie_path in (TRAFFIC_ADMIN_COOKIE_PATH, admin_path, "/"):
+            response.delete_cookie(cookie_name, path=cookie_path)
 
 
 def _make_traffic_admin_token(access_token: str) -> str:
@@ -1860,7 +1876,7 @@ async def nauti_traffic_admin_page(access_token: str, request: Request):
     error = request.query_params.get("error")
     notice = request.query_params.get("notice")
     if not _traffic_admin_logged_in(request, access_token):
-        return templates.TemplateResponse(
+        response = templates.TemplateResponse(
             request,
             "nauti_traffic_admin.html",
             {
@@ -1875,10 +1891,11 @@ async def nauti_traffic_admin_page(access_token: str, request: Request):
                 "admin_path": admin_path,
             },
         )
+        return _no_store(response)
 
     config = await load_traffic_config()
     stats = await public_traffic_leaderboard()
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request,
         "nauti_traffic_admin.html",
         {
@@ -1893,6 +1910,7 @@ async def nauti_traffic_admin_page(access_token: str, request: Request):
             "admin_path": admin_path,
         },
     )
+    return _no_store(response)
 
 
 @app.post("/nauti-traffic/admin/{access_token}/login", tags=["Admin"])
@@ -1904,7 +1922,7 @@ async def nauti_traffic_admin_login(access_token: str, pin: str = Form("")):
         return _traffic_admin_redirect(access_token, "error=bad_pin")
 
     redirect = _traffic_admin_redirect(access_token)
-    redirect.delete_cookie(TRAFFIC_ADMIN_COOKIE, path=admin_path)
+    _clear_traffic_admin_cookies(redirect, admin_path)
     redirect.set_cookie(
         TRAFFIC_ADMIN_COOKIE,
         _make_traffic_admin_token(access_token),
@@ -1921,8 +1939,7 @@ async def nauti_traffic_admin_login(access_token: str, pin: str = Form("")):
 async def nauti_traffic_admin_logout(access_token: str):
     admin_path = _verify_traffic_admin_path(access_token)
     response = _traffic_admin_redirect(access_token, "notice=locked")
-    response.delete_cookie(TRAFFIC_ADMIN_COOKIE, path=TRAFFIC_ADMIN_COOKIE_PATH)
-    response.delete_cookie(TRAFFIC_ADMIN_COOKIE, path=admin_path)
+    _clear_traffic_admin_cookies(response, admin_path)
     return response
 
 
