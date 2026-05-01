@@ -300,6 +300,39 @@ async def load_traffic_config() -> dict:
         await db.close()
 
 
+def _traffic_ref_is_configured(raw_ref: str, canonical_ref: str, config: dict) -> bool:
+    """Allow direct vanity paths only for refs already managed in traffic config."""
+    refs = {raw_ref, canonical_ref}
+    refs.discard(None)
+
+    known_refs = set(_dedupe(config.get("first_mates")))
+    known_refs.update(_dedupe(config.get("hidden_refs")))
+    if config.get("captain"):
+        known_refs.add(config["captain"])
+    for key in ("avatar_overrides", "avatar_urls"):
+        mapping = config.get(key) if isinstance(config.get(key), dict) else {}
+        known_refs.update(mapping.keys())
+
+    return bool(refs & known_refs)
+
+
+async def canonical_traffic_ref(raw_ref: str, *, require_configured: bool = False) -> str | None:
+    clean_ref = _validate_ref(raw_ref)
+    if not clean_ref:
+        return None
+
+    try:
+        config = await load_traffic_config()
+    except Exception:
+        config = _default_traffic_config()
+
+    aliases = config.get("ref_aliases") if isinstance(config.get("ref_aliases"), dict) else {}
+    canonical = _validate_ref(aliases.get(clean_ref)) or clean_ref
+    if require_configured and not _traffic_ref_is_configured(clean_ref, canonical, config):
+        return None
+    return canonical
+
+
 async def save_traffic_config(config: dict) -> None:
     clean_config = _normalize_traffic_config(config)
     db = await get_db()
@@ -1630,7 +1663,7 @@ async def ambassador_redirect(ambassador: str, request: Request):
 
     Usage: send ambassadors links like https://clearance.nauti-labs.com/r/alice
     """
-    ref = _validate_ref(ambassador)
+    ref = await canonical_traffic_ref(ambassador)
     if not ref:
         return RedirectResponse(url="/", status_code=302)
     await _record_visit(request, ref)
@@ -2193,6 +2226,18 @@ async def robots_txt():
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
     return RedirectResponse(url="/static/favicon.svg")
+
+
+@app.get("/{ambassador}", tags=["Pages"], include_in_schema=False)
+async def ambassador_vanity_redirect(ambassador: str, request: Request):
+    """Accept common copied links like /davidfx and canonicalize configured refs."""
+    ref = await canonical_traffic_ref(ambassador, require_configured=True)
+    if not ref:
+        raise HTTPException(status_code=404, detail="Not Found")
+    await _record_visit(request, ref)
+    response = RedirectResponse(url="/", status_code=302)
+    _set_ref_cookie(response, ref)
+    return response
 
 
 # --- Payments ---
