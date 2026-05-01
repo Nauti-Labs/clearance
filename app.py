@@ -1819,6 +1819,49 @@ async def ambassador_stats(name: str, x_admin_key: str = Header(None, alias="X-A
     return await _ambassador_stats_payload(ref)
 
 
+@app.get("/v1/admin/ambassadors/{name}/visits", tags=["Admin"])
+async def ambassador_visits(name: str, x_admin_key: str = Header(None, alias="X-Admin-Key")):
+    """Raw visit rows for one ambassador — fraud check (unique IPs, referers).
+
+    Returns timestamp + referer + ip + bot flag for every click. Use to
+    verify whether N clicks came from N humans or 1 person refreshing.
+    """
+    _require_admin(x_admin_key)
+    ref = _validate_ref(name)
+    if not ref:
+        raise HTTPException(status_code=400, detail="invalid ambassador name")
+    db = await get_db()
+    try:
+        rows = await (await db.execute(
+            "SELECT created_at, referer, ip, user_agent, is_bot FROM visits WHERE ref = ? ORDER BY created_at DESC LIMIT 500",
+            (ref,)
+        )).fetchall()
+    finally:
+        await db.close()
+    visits = [dict(r) for r in rows]
+    unique_ips = len({v["ip"] for v in visits if v.get("ip")})
+    return {
+        "ambassador": ref,
+        "total_clicks": len(visits),
+        "unique_ips": unique_ips,
+        "visits": visits,
+    }
+
+
+@app.get("/v1/admin/signups", tags=["Admin"])
+async def admin_signups(x_admin_key: str = Header(None, alias="X-Admin-Key")):
+    """Recent signups with email + ambassador attribution. Internal use only."""
+    _require_admin(x_admin_key)
+    db = await get_db()
+    try:
+        rows = await (await db.execute(
+            "SELECT created_at, email, name, tier, referred_by FROM api_keys ORDER BY created_at DESC LIMIT 200"
+        )).fetchall()
+    finally:
+        await db.close()
+    return {"signups": [dict(r) for r in rows], "count": len(rows)}
+
+
 async def _general_traffic_payload() -> dict:
     """Aggregate non-attributed visits + signups (Telegram / Reddit / direct / SEO / etc)."""
     db = await get_db()
