@@ -134,6 +134,7 @@ ADMIN_KEY = os.getenv("ADMIN_KEY", "")
 TRAFFIC_ADMIN_PIN = os.getenv("NAUTI_TRAFFIC_ADMIN_PIN", "").strip()
 TRAFFIC_ADMIN_PATH_TOKEN = os.getenv("NAUTI_TRAFFIC_ADMIN_PATH_TOKEN", "").strip()
 TRAFFIC_ADMIN_COOKIE = "nauti_traffic_admin"
+TRAFFIC_ADMIN_COOKIE_PATH = "/nauti-traffic/admin/"
 TRAFFIC_ADMIN_SESSION_HOURS = int(os.getenv("NAUTI_TRAFFIC_ADMIN_SESSION_HOURS", "12"))
 TRAFFIC_CONFIG_KEY = "nauti_traffic_config"
 TRUSTED_BY_PATH = Path(__file__).resolve().parent / "static" / "trusted_by.json"
@@ -1902,7 +1903,8 @@ async def nauti_traffic_admin_login(access_token: str, pin: str = Form("")):
     if not secrets.compare_digest(pin.strip(), TRAFFIC_ADMIN_PIN):
         return _traffic_admin_redirect(access_token, "error=bad_pin")
 
-    redirect = _traffic_admin_redirect(access_token, "notice=unlocked")
+    redirect = _traffic_admin_redirect(access_token)
+    redirect.delete_cookie(TRAFFIC_ADMIN_COOKIE, path=admin_path)
     redirect.set_cookie(
         TRAFFIC_ADMIN_COOKIE,
         _make_traffic_admin_token(access_token),
@@ -1910,7 +1912,7 @@ async def nauti_traffic_admin_login(access_token: str, pin: str = Form("")):
         httponly=True,
         secure=not _is_local_url(BASE_URL),
         samesite="lax",
-        path=admin_path,
+        path=TRAFFIC_ADMIN_COOKIE_PATH,
     )
     return redirect
 
@@ -1919,6 +1921,7 @@ async def nauti_traffic_admin_login(access_token: str, pin: str = Form("")):
 async def nauti_traffic_admin_logout(access_token: str):
     admin_path = _verify_traffic_admin_path(access_token)
     response = _traffic_admin_redirect(access_token, "notice=locked")
+    response.delete_cookie(TRAFFIC_ADMIN_COOKIE, path=TRAFFIC_ADMIN_COOKIE_PATH)
     response.delete_cookie(TRAFFIC_ADMIN_COOKIE, path=admin_path)
     return response
 

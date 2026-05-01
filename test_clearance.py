@@ -135,6 +135,8 @@ class ClearanceSmokeTests(unittest.TestCase):
         self.assertEqual(bad_login.status_code, 303)
         self.assertEqual(login.status_code, 303)
         self.assertIn("nauti_traffic_admin", login.headers.get("set-cookie", ""))
+        self.assertIn("Path=/nauti-traffic/admin/", login.headers.get("set-cookie", ""))
+        self.assertEqual(login.headers.get("location"), admin_path)
         self.assertEqual(unlocked.status_code, 200)
         self.assertIn("Affiliate Control", unlocked.text)
         self.assertIn(f'action="{admin_path}/affiliate"', unlocked.text)
