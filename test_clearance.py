@@ -107,7 +107,7 @@ class ClearanceSmokeTests(unittest.TestCase):
             unlocked = client.get(admin_path)
             saved = client.post(
                 f"{admin_path}/affiliate",
-                data={"ref": "bhamzy", "badge": "first_mate", "avatar_url": "", "x_handle": "bhamzy"},
+                data={"ref": "bhamzy", "badge": "none", "avatar_url": "", "x_handle": "bhamzy"},
                 follow_redirects=False,
             )
             alias = client.post(
@@ -152,7 +152,8 @@ class ClearanceSmokeTests(unittest.TestCase):
         self.assertEqual(unknown_vanity.status_code, 404)
         self.assertEqual(health.status_code, 200)
         payload = config.json()
-        self.assertIn("bhamzy", payload["first_mates"])
+        self.assertNotIn("bhamzy", payload["first_mates"])
+        self.assertLessEqual(len(payload["first_mates"]), 10)
         self.assertEqual(payload["ref_aliases"]["bhamzi"], "bhamzy")
         self.assertIn("telegram", payload["hidden_refs"])
         self.assertEqual(payload["avatar_overrides"]["bhamzy"], "bhamzy")
