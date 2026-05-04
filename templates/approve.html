@@ -44,6 +44,14 @@
             align-items: center;
             justify-content: center;
             font-size: 20px;
+            color: #f59e0b;
+        }
+
+        .card-header .icon svg {
+            width: 28px;
+            height: 28px;
+            display: block;
+            filter: drop-shadow(0 0 10px rgba(245, 158, 11, 0.45));
         }
 
         .card-header h1 {
@@ -246,7 +254,13 @@
     {% else %}
     <div class="card" id="clearance-card">
         <div class="card-header">
-            <div class="icon">&#9889;</div>
+            <div class="icon" aria-label="Clearance">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="4 6 8 12 4 18"/>
+                    <polyline points="10 6 14 12 10 18"/>
+                    <polyline points="16 6 20 12 16 18"/>
+                </svg>
+            </div>
             <div>
                 <h1>Agent Clearance Request</h1>
                 <div class="sub">An AI agent is requesting your approval</div>
