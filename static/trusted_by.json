@@ -40,7 +40,8 @@
     "harbeodun": "/static/avatars/harbeodun.png",
     "elimoni": "/static/avatars/elimoni.png",
     "alex": "/static/avatars/alex.png",
-    "angela_dubois": "/static/avatars/angela_dubois.png"
+    "angela_dubois": "/static/avatars/angela_dubois.png",
+    "rook": "/static/avatars/rook.png"
   },
 
   "trusted_by": [
