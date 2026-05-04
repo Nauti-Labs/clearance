@@ -253,14 +253,18 @@ def _normalize_traffic_config(config: dict | None) -> dict:
         config = {}
 
     captain = _validate_ref(config.get("captain"))
+    raw_captains = config.get("captains") if isinstance(config.get("captains"), list) else []
+    captains = _dedupe(([captain] if captain else []) + raw_captains)
+    first_mates = [ref for ref in _dedupe(config.get("first_mates")) if ref not in captains][:10]
     return {
         "_comment": config.get("_comment", ""),
-        "captain": captain,
+        "captain": captains[0] if captains else None,
+        "captains": captains,
         "_first_mates_doc": config.get(
             "_first_mates_doc",
             "Up to 10 First Mate badges total. Tier below Captain. Add ref names lowercased.",
         ),
-        "first_mates": _dedupe(config.get("first_mates"))[:10],
+        "first_mates": first_mates,
         "ref_aliases": _clean_mapping(config.get("ref_aliases")),
         "hidden_refs": _dedupe(config.get("hidden_refs")),
         "avatar_overrides": _clean_mapping(config.get("avatar_overrides")),
@@ -273,7 +277,7 @@ def _normalize_traffic_config(config: dict | None) -> dict:
 def _merge_traffic_config(base: dict, override: dict | None) -> dict:
     merged = json.loads(json.dumps(base))
     if isinstance(override, dict):
-        for key in ("captain", "first_mates", "trusted_by", "onboarding", "hidden_refs"):
+        for key in ("captain", "captains", "first_mates", "trusted_by", "onboarding", "hidden_refs"):
             if key in override:
                 merged[key] = override[key]
         for key in ("ref_aliases", "avatar_overrides", "avatar_urls"):
@@ -310,6 +314,7 @@ def _traffic_ref_is_configured(raw_ref: str, canonical_ref: str, config: dict) -
     refs.discard(None)
 
     known_refs = set(_dedupe(config.get("first_mates")))
+    known_refs.update(_dedupe(config.get("captains")))
     known_refs.update(_dedupe(config.get("hidden_refs")))
     if config.get("captain"):
         known_refs.add(config["captain"])
@@ -2002,24 +2007,28 @@ async def nauti_traffic_admin_affiliate(
         return _traffic_admin_redirect(access_token, "error=bad_ref")
 
     config = await load_traffic_config()
+    captains = _dedupe(config.get("captains"))
     first_mates = _dedupe(config.get("first_mates"))
     hidden_refs = set(_dedupe(config.get("hidden_refs")))
     hidden_refs.discard(clean_ref)
 
     badge = badge.strip().lower()
     if badge == "captain":
-        config["captain"] = clean_ref
+        if clean_ref not in captains:
+            captains.append(clean_ref)
         first_mates = [item for item in first_mates if item != clean_ref]
     elif badge == "first_mate":
-        if clean_ref != config.get("captain") and clean_ref not in first_mates:
+        captains = [item for item in captains if item != clean_ref]
+        if clean_ref not in first_mates:
             if len(first_mates) >= 10:
                 return _traffic_admin_redirect(access_token, "error=first_mates_full")
             first_mates.append(clean_ref)
     else:
+        captains = [item for item in captains if item != clean_ref]
         first_mates = [item for item in first_mates if item != clean_ref]
-        if config.get("captain") == clean_ref:
-            config["captain"] = None
 
+    config["captain"] = captains[0] if captains else None
+    config["captains"] = captains
     config["first_mates"] = first_mates
     config["hidden_refs"] = sorted(hidden_refs)
 

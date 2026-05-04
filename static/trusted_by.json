@@ -1,7 +1,8 @@
 {
-  "_comment": "Edit this file to update Nauti-Traffic trust signals. Avatars auto-pull from unavatar.io/x/<handle>. Trusted_by = real X handles in conversation/watching (no fake numbers shown — just an avatar strip). Onboarding = honest 'next batch' rows that show momentum without naming specific people prematurely. Captain = single ref that gets the ⚓ CAPTAIN badge in the leaderboard.",
+  "_comment": "Edit this file to update Nauti-Traffic trust signals. Avatars auto-pull from unavatar.io/x/<handle>. Trusted_by = real X handles in conversation/watching (no fake numbers shown — just an avatar strip). Onboarding = honest 'next batch' rows that show momentum without naming specific people prematurely. Captains get the gold ⚓ CAPTAIN badge in the leaderboard.",
 
   "captain": "dipson_crypt",
+  "captains": ["dipson_crypt", "angela_dubois"],
 
   "_first_mates_doc": "Up to 10 First Mate badges total. Tier below Captain. Add ref names lowercased.",
   "first_mates": ["plemab", "x6r", "davidfx", "d0ny_g", "nft_queen", "6_yards", "david_on_chain", "harbeodun", "elimoni", "alex"],
@@ -10,6 +11,7 @@
     "_doc": "mistyped ref → canonical public ref",
     "plemeb": "plemab",
     "david": "davidfx",
+    "angela": "angela_dubois",
     "sungjinwoo70": "alex"
   },
 
@@ -37,7 +39,8 @@
     "david_on_chain": "/static/avatars/david_on_chain.png",
     "harbeodun": "/static/avatars/harbeodun.png",
     "elimoni": "/static/avatars/elimoni.png",
-    "alex": "/static/avatars/alex.png"
+    "alex": "/static/avatars/alex.png",
+    "angela_dubois": "/static/avatars/angela_dubois.png"
   },
 
   "trusted_by": [

@@ -110,6 +110,11 @@ class ClearanceSmokeTests(unittest.TestCase):
                 data={"ref": "bhamzy", "badge": "none", "avatar_url": "", "x_handle": "bhamzy"},
                 follow_redirects=False,
             )
+            captain_saved = client.post(
+                f"{admin_path}/affiliate",
+                data={"ref": "second_captain", "badge": "captain", "avatar_url": "", "x_handle": ""},
+                follow_redirects=False,
+            )
             alias = client.post(
                 f"{admin_path}/alias",
                 data={"alias": "bhamzi", "target": "bhamzy"},
@@ -122,6 +127,7 @@ class ClearanceSmokeTests(unittest.TestCase):
             )
             pretty_alias = client.get("/r/bhamzi", follow_redirects=False)
             vanity_alias = client.get("/bhamzi", follow_redirects=False)
+            captain_vanity = client.get("/second_captain", follow_redirects=False)
             unknown_vanity = client.get("/not_configured", follow_redirects=False)
             health = client.get("/health")
             config = client.get("/v1/traffic/config")
@@ -143,15 +149,23 @@ class ClearanceSmokeTests(unittest.TestCase):
         self.assertIn("Affiliate Control", unlocked.text)
         self.assertIn(f'action="{admin_path}/affiliate"', unlocked.text)
         self.assertEqual(saved.status_code, 303)
+        self.assertEqual(captain_saved.status_code, 303)
         self.assertEqual(alias.status_code, 303)
         self.assertEqual(hidden.status_code, 303)
         self.assertEqual(pretty_alias.status_code, 302)
         self.assertIn("clearance_ref=bhamzy", pretty_alias.headers.get("set-cookie", ""))
         self.assertEqual(vanity_alias.status_code, 302)
         self.assertIn("clearance_ref=bhamzy", vanity_alias.headers.get("set-cookie", ""))
+        self.assertEqual(captain_vanity.status_code, 302)
+        self.assertIn("clearance_ref=second_captain", captain_vanity.headers.get("set-cookie", ""))
         self.assertEqual(unknown_vanity.status_code, 404)
         self.assertEqual(health.status_code, 200)
         payload = config.json()
+        self.assertEqual(payload["captain"], "dipson_crypt")
+        self.assertIn("dipson_crypt", payload["captains"])
+        self.assertIn("angela_dubois", payload["captains"])
+        self.assertIn("second_captain", payload["captains"])
+        self.assertEqual(payload["avatar_urls"]["angela_dubois"], "/static/avatars/angela_dubois.png")
         self.assertNotIn("bhamzy", payload["first_mates"])
         self.assertLessEqual(len(payload["first_mates"]), 10)
         self.assertEqual(payload["ref_aliases"]["bhamzi"], "bhamzy")

@@ -281,10 +281,12 @@
                     <span class="sub">live config</span>
                 </div>
                 <div class="body">
-                    <div class="muted">Captain</div>
+                    <div class="muted">Captains</div>
                     <div>
-                        {% if config.captain %}
-                            <span class="pill hot">@{{ config.captain }}</span>
+                        {% if config.captains %}
+                            {% for ref in config.captains %}
+                                <span class="pill hot">@{{ ref }}</span>
+                            {% endfor %}
                         {% else %}
                             <span class="pill">none</span>
                         {% endif %}
