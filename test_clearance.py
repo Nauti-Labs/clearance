@@ -3,6 +3,7 @@ import os
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 
@@ -24,6 +25,9 @@ class ClearanceSmokeTests(unittest.TestCase):
         os.environ["MIN_CONFIRMATIONS"] = "12"
         os.environ.pop("STRIPE_SECRET_KEY", None)
         os.environ.pop("STRIPE_WEBHOOK_SECRET", None)
+        os.environ["TELEGRAM_BOT_TOKEN"] = ""
+        os.environ["TELEGRAM_CHAT_ID"] = ""
+        os.environ["TELEGRAM_WEBHOOK_SECRET"] = ""
         os.environ["FAMILY_JUSTIN_PASSCODE"] = "nauti-justin"
         os.environ["FAMILY_NICOLE_PASSCODE"] = "nauti-nicole"
         os.environ["FAMILY_SYNC_TOKEN"] = "sync-secret"
@@ -248,6 +252,96 @@ class ClearanceSmokeTests(unittest.TestCase):
 
         self.assertEqual(blocked.status_code, 429)
         self.assertIn("Too many free key signups", blocked.json()["detail"])
+
+    def test_clearance_approval_page_uses_same_origin_decision_post(self):
+        with TestClient(self.app_module.app) as client:
+            key_response = client.post("/v1/keys", json={"email": "approval@example.com"})
+            headers = {"X-API-Key": key_response.json()["api_key"]}
+            clearance = client.post(
+                "/v1/clearances",
+                headers=headers,
+                json={
+                    "title": "Approve XRP test trade",
+                    "description": "Browser approval should post to the current Clearance host.",
+                    "scope": "crypto:buy:XRP",
+                    "budget_amount": 20,
+                    "budget_currency": "USD",
+                },
+            )
+            approval = client.get(f"/approve/{clearance.json()['id']}")
+
+        self.assertEqual(clearance.status_code, 201)
+        self.assertEqual(approval.status_code, 200)
+        self.assertIn("fetch('/v1/clearances/", approval.text)
+
+    def test_telegram_webhook_can_approve_pending_clearance(self):
+        with TestClient(self.app_module.app) as client:
+            key_response = client.post("/v1/keys", json={"email": "telegram@example.com"})
+            headers = {"X-API-Key": key_response.json()["api_key"]}
+            clearance = client.post(
+                "/v1/clearances",
+                headers=headers,
+                json={
+                    "title": "Approve Telegram test trade",
+                    "scope": "telegram:test",
+                    "budget_amount": 1,
+                    "budget_currency": "USD",
+                },
+            )
+            clearance_id = clearance.json()["id"]
+            callback = client.post(
+                "/v1/telegram/webhook",
+                json={
+                    "callback_query": {
+                        "id": "callback-test",
+                        "data": f"clr_approve:{clearance_id}",
+                        "from": {"username": "tester"},
+                        "message": {
+                            "chat": {"id": 123},
+                            "message_id": 456,
+                            "text": "Clearance Request",
+                        },
+                    }
+                },
+            )
+            updated = client.get(f"/v1/clearances/{clearance_id}", headers=headers)
+
+        self.assertEqual(callback.status_code, 200)
+        self.assertEqual(callback.json(), {"ok": True})
+        self.assertEqual(updated.json()["status"], "approved")
+        self.assertTrue(updated.json()["token"])
+
+    def test_browser_decision_sends_telegram_update_when_configured(self):
+        self.app_module.TELEGRAM_BOT_TOKEN = "test-token"
+        self.app_module.TELEGRAM_CHAT_ID = "123"
+
+        with patch.object(self.app_module, "telegram_call", new=AsyncMock(return_value={"ok": True})) as call:
+            with TestClient(self.app_module.app) as client:
+                key_response = client.post("/v1/keys", json={"email": "browser-telegram@example.com"})
+                headers = {"X-API-Key": key_response.json()["api_key"]}
+                clearance = client.post(
+                    "/v1/clearances",
+                    headers=headers,
+                    json={
+                        "title": "Approve browser decision test",
+                        "scope": "browser:telegram:test",
+                        "budget_amount": 1,
+                        "budget_currency": "USD",
+                    },
+                )
+                decision = client.post(
+                    f"/v1/clearances/{clearance.json()['id']}/decide",
+                    json={"approved": False, "note": "Declined in browser"},
+                )
+
+        self.assertEqual(decision.status_code, 200)
+        self.assertEqual(decision.json()["status"], "denied")
+        send_message_calls = [
+            args for args, _kwargs in call.await_args_list
+            if args and args[0] == "sendMessage"
+        ]
+        self.assertEqual(len(send_message_calls), 2)
+        self.assertIn("DENIED", send_message_calls[-1][1]["text"])
 
     def test_family_sync_populates_dashboard_metrics(self):
         future_due = (datetime.now(timezone.utc) + timedelta(days=3)).date().isoformat()

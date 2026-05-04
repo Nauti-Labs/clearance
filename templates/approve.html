@@ -324,7 +324,7 @@
             btns.querySelectorAll('button').forEach(b => b.disabled = true);
 
             try {
-                const res = await fetch('{{ base_url }}/v1/clearances/{{ clearance.id }}/decide', {
+                const res = await fetch('/v1/clearances/{{ clearance.id }}/decide', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ approved, note: note || null })

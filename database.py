@@ -364,6 +364,8 @@ async def init_db():
     """)
 
     await _ensure_column(db, "payments", "metadata", "metadata TEXT")
+    await _ensure_column(db, "clearances", "decided_by", "decided_by TEXT")
+    await _ensure_column(db, "clearances", "decision_note", "decision_note TEXT")
     # Ambassador attribution columns (idempotent — safe on re-init)
     await _ensure_column(db, "api_keys", "referred_by", "referred_by TEXT")
     await _ensure_column(db, "payments", "referred_by", "referred_by TEXT")

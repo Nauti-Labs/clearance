@@ -10,11 +10,13 @@ import re
 import json
 import secrets
 import hashlib
+import html
 from datetime import datetime, timedelta, timezone
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import quote
 
+import httpx
 from fastapi import FastAPI, HTTPException, Header, Request, Depends, Response, Form
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -60,6 +62,9 @@ STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
 STRIPE_SUCCESS_URL = os.getenv("STRIPE_SUCCESS_URL", f"{BASE_URL.rstrip('/')}/?checkout=success")
 STRIPE_CANCEL_URL = os.getenv("STRIPE_CANCEL_URL", f"{BASE_URL.rstrip('/')}/?checkout=cancelled")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
+TELEGRAM_WEBHOOK_SECRET = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
 FAMILY_SESSION_COOKIE = os.getenv("FAMILY_SESSION_COOKIE", "clearance_family_session")
 FAMILY_SESSION_HOURS = int(os.getenv("FAMILY_SESSION_HOURS", "18"))
 FAMILY_SYNC_TOKEN = os.getenv("FAMILY_SYNC_TOKEN", "")
@@ -1326,6 +1331,129 @@ async def create_api_key(body: CreateAPIKey, request: Request):
         await db.close()
 
 
+# --- Telegram helpers ---
+
+async def telegram_call(method: str, payload: dict) -> dict | None:
+    """Call Telegram Bot API without blocking clearance creation."""
+    if not TELEGRAM_BOT_TOKEN:
+        return None
+
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/{method}"
+    try:
+        async with httpx.AsyncClient(timeout=8) as client:
+            response = await client.post(url, json=payload)
+        if response.status_code >= 400:
+            print(f"[telegram] HTTP {response.status_code} on {method}: {response.text[:300]}")
+            return None
+        return response.json()
+    except Exception as exc:
+        print(f"[telegram] error on {method}: {exc}")
+        return None
+
+
+def telegram_format_message(
+    *,
+    clearance_id: str,
+    title: str,
+    description: str | None,
+    scope: str,
+    budget_amount: float | None,
+    budget_currency: str | None,
+    expires_at: str,
+) -> str:
+    lines = [
+        "<b>Clearance Request</b>",
+        "",
+        f"<b>{html.escape(title)}</b>",
+    ]
+    if description:
+        snippet = description[:280] + "..." if len(description) > 280 else description
+        lines.append(html.escape(snippet))
+    lines.extend([
+        "",
+        f"<b>Scope:</b> <code>{html.escape(scope)}</code>",
+    ])
+    if budget_amount is not None:
+        lines.append(f"<b>Budget:</b> {budget_amount} {html.escape(budget_currency or 'USD')}")
+    lines.extend([
+        f"<b>Expires:</b> {html.escape(expires_at)}",
+        "",
+        f"<i>Clearance {html.escape(clearance_id[:16])}...</i>",
+    ])
+    return "\n".join(lines)
+
+
+async def send_clearance_telegram_notification(
+    *,
+    clearance_id: str,
+    title: str,
+    description: str | None,
+    scope: str,
+    budget_amount: float | None,
+    budget_currency: str | None,
+    expires_at: str,
+    approval_url: str,
+) -> None:
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return
+
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": telegram_format_message(
+            clearance_id=clearance_id,
+            title=title,
+            description=description,
+            scope=scope,
+            budget_amount=budget_amount,
+            budget_currency=budget_currency,
+            expires_at=expires_at,
+        ),
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True,
+        "reply_markup": {
+            "inline_keyboard": [[
+                {"text": "Approve", "callback_data": f"clr_approve:{clearance_id}"},
+                {"text": "Deny", "callback_data": f"clr_deny:{clearance_id}"},
+            ], [
+                {"text": "Open in browser", "url": approval_url},
+            ]],
+        },
+    }
+    await telegram_call("sendMessage", payload)
+
+
+async def send_clearance_telegram_decision(
+    *,
+    clearance_id: str,
+    title: str,
+    status: str,
+    actor: str,
+    note: str | None,
+) -> None:
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return
+
+    lines = [
+        f"<b>Clearance {html.escape(status.upper())}</b>",
+        "",
+        f"<b>{html.escape(title)}</b>",
+        f"<b>ID:</b> <code>{html.escape(clearance_id)}</code>",
+        f"<b>By:</b> {html.escape(actor)}",
+    ]
+    if note:
+        lines.append(f"<b>Note:</b> {html.escape(note)}")
+
+    await telegram_call(
+        "sendMessage",
+        {
+            "chat_id": TELEGRAM_CHAT_ID,
+            "text": "\n".join(lines),
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True,
+        },
+    )
+
+
 # --- Clearance CRUD ---
 
 @app.post("/v1/clearances", response_model=ClearanceResponse, status_code=201, tags=["Clearances"])
@@ -1372,6 +1500,20 @@ async def create_clearance(body: CreateClearance, api_key: dict = Depends(get_ap
             (clr_id, api_key["id"], "clearance.created", now_iso())
         )
         await db.commit()
+
+        try:
+            await send_clearance_telegram_notification(
+                clearance_id=clr_id,
+                title=body.title,
+                description=body.description,
+                scope=body.scope,
+                budget_amount=body.budget_amount,
+                budget_currency=body.budget_currency,
+                expires_at=expires,
+                approval_url=approval_url,
+            )
+        except Exception as exc:
+            print(f"[telegram] notification failed for {clr_id}: {exc}")
 
         return ClearanceResponse(
             id=clr_id,
@@ -1537,7 +1679,16 @@ async def decide_clearance(clearance_id: str, body: ApproveAction, request: Requ
         )
         await db.commit()
 
-        # TODO: Fire webhook if callback_url is set
+        try:
+            await send_clearance_telegram_decision(
+                clearance_id=clearance_id,
+                title=row["title"],
+                status=new_status,
+                actor="browser",
+                note=body.note,
+            )
+        except Exception as exc:
+            print(f"[telegram] decision notification failed for {clearance_id}: {exc}")
 
         return {
             "id": clearance_id,
@@ -1545,6 +1696,138 @@ async def decide_clearance(clearance_id: str, body: ApproveAction, request: Requ
             "decided_at": decided_at,
             "token": token,
         }
+    finally:
+        await db.close()
+
+
+# --- Telegram webhook ---
+
+async def _telegram_answer(callback_id: str | None, text: str, show_alert: bool = False) -> None:
+    if not callback_id:
+        return
+    await telegram_call(
+        "answerCallbackQuery",
+        {
+            "callback_query_id": callback_id,
+            "text": text,
+            "show_alert": show_alert,
+        },
+    )
+
+
+@app.post("/v1/telegram/webhook", tags=["Telegram"])
+async def telegram_webhook(request: Request):
+    """Receive Telegram Approve/Deny inline button callbacks."""
+    if TELEGRAM_WEBHOOK_SECRET:
+        provided = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+        if provided != TELEGRAM_WEBHOOK_SECRET:
+            raise HTTPException(status_code=403, detail="Invalid Telegram webhook secret")
+
+    payload = await request.json()
+    callback = payload.get("callback_query")
+    if not callback:
+        return {"ok": True}
+
+    callback_id = callback.get("id")
+    data = (callback.get("data") or "").strip()
+    action, _, clearance_id = data.partition(":")
+    if action not in ("clr_approve", "clr_deny") or not clearance_id:
+        await _telegram_answer(callback_id, "Unknown Clearance action.", True)
+        return {"ok": True}
+
+    message = callback.get("message") or {}
+    chat = message.get("chat") or {}
+    chat_id = chat.get("id")
+    message_id = message.get("message_id")
+    original_text = message.get("text") or ""
+    actor = (
+        (callback.get("from") or {}).get("username")
+        or (callback.get("from") or {}).get("first_name")
+        or "telegram_user"
+    )
+
+    if TELEGRAM_CHAT_ID and str(chat_id) != str(TELEGRAM_CHAT_ID):
+        await _telegram_answer(callback_id, "Not authorized.", True)
+        return {"ok": True}
+
+    approving = action == "clr_approve"
+    db = await get_db()
+    try:
+        cursor = await db.execute("SELECT * FROM clearances WHERE id = ?", (clearance_id,))
+        row = await cursor.fetchone()
+        if not row:
+            await _telegram_answer(callback_id, "Clearance not found.", True)
+            return {"ok": True}
+
+        row = dict(row)
+        if row["status"] != "pending":
+            await _telegram_answer(callback_id, f"Already {row['status']}.", True)
+            return {"ok": True}
+
+        expires = datetime.fromisoformat(row["expires_at"])
+        if datetime.now(timezone.utc) >= expires:
+            await db.execute(
+                "UPDATE clearances SET status = 'expired' WHERE id = ?", (clearance_id,)
+            )
+            await db.commit()
+            await _telegram_answer(callback_id, "Clearance expired.", True)
+            return {"ok": True}
+
+        decided_at = now_iso()
+        token = None
+        if approving:
+            new_status = "approved"
+            token = make_clearance_token(
+                clearance_id,
+                row["scope"],
+                row["budget_amount"],
+                row["budget_currency"],
+                row["expires_at"],
+            )
+        else:
+            new_status = "denied"
+
+        await db.execute(
+            """UPDATE clearances
+               SET status = ?, token = ?, decided_at = ?, decided_by = ?, decision_note = ?
+               WHERE id = ?""",
+            (
+                new_status,
+                token,
+                decided_at,
+                f"telegram:{actor}",
+                "Approved via Telegram" if approving else "Denied via Telegram",
+                clearance_id,
+            ),
+        )
+        await db.execute(
+            """INSERT INTO audit_log (clearance_id, api_key_id, event, actor, created_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            (
+                clearance_id,
+                row["api_key_id"],
+                f"clearance.{new_status}",
+                f"telegram:{actor}",
+                decided_at,
+            ),
+        )
+        await db.commit()
+
+        await _telegram_answer(callback_id, "Approved" if approving else "Denied")
+
+        if chat_id and message_id:
+            stamp = "APPROVED" if approving else "DENIED"
+            await telegram_call(
+                "editMessageText",
+                {
+                    "chat_id": chat_id,
+                    "message_id": message_id,
+                    "text": f"{original_text}\n\n{stamp} via Telegram",
+                    "disable_web_page_preview": True,
+                },
+            )
+
+        return {"ok": True}
     finally:
         await db.close()
 
@@ -1669,21 +1952,27 @@ async def approval_page(clearance_id: str, request: Request):
         )
         row = await cursor.fetchone()
         if not row:
-            return templates.TemplateResponse("approve.html", {
-                "request": request,
-                "error": "Clearance not found",
-                "clearance": None,
-            })
+            return templates.TemplateResponse(
+                request,
+                "approve.html",
+                {
+                    "error": "Clearance not found",
+                    "clearance": None,
+                },
+            )
 
         clearance = dict(row)
         clearance["metadata"] = json.loads(clearance["metadata"]) if clearance["metadata"] else None
 
-        return templates.TemplateResponse("approve.html", {
-            "request": request,
-            "clearance": clearance,
-            "error": None,
-            "base_url": BASE_URL,
-        })
+        return templates.TemplateResponse(
+            request,
+            "approve.html",
+            {
+                "clearance": clearance,
+                "error": None,
+                "base_url": BASE_URL,
+            },
+        )
     finally:
         await db.close()
 
