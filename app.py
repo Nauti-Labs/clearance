@@ -11,7 +11,10 @@ import json
 import secrets
 import hashlib
 import html
+import asyncio
+import smtplib
 from datetime import datetime, timedelta, timezone
+from email.message import EmailMessage
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import quote
@@ -56,6 +59,16 @@ PAYMENT_ENS = os.getenv("PAYMENT_ENS", "")
 PAYMENT_CHAIN = os.getenv("PAYMENT_CHAIN", "base")
 PAYMENT_CHAIN_ID = int(os.getenv("PAYMENT_CHAIN_ID", "8453"))
 PAYMENT_SUPPORT_EMAIL = os.getenv("PAYMENT_SUPPORT_EMAIL", "consulting@nauti-labs.com")
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", PAYMENT_SUPPORT_EMAIL)
+SIGNUP_NOTIFY_EMAIL = os.getenv("SIGNUP_NOTIFY_EMAIL", ADMIN_EMAIL)
+EMAIL_FROM = os.getenv("EMAIL_FROM", os.getenv("SMTP_FROM", os.getenv("SMTP_USER", PAYMENT_SUPPORT_EMAIL)))
+SMTP_HOST = os.getenv("SMTP_HOST", "")
+SMTP_PORT = int(os.getenv("SMTP_PORT") or ("465" if os.getenv("SMTP_USE_SSL", "").lower() in {"1", "true", "yes"} else "587"))
+SMTP_USER = os.getenv("SMTP_USER", "")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").lower() in {"1", "true", "yes"}
+SMTP_USE_SSL = os.getenv("SMTP_USE_SSL", "false").lower() in {"1", "true", "yes"}
+WELCOME_EMAILS_ENABLED = os.getenv("WELCOME_EMAILS_ENABLED", "false").lower() in {"1", "true", "yes"}
 USDC_CONTRACT = os.getenv("USDC_CONTRACT", "")
 MIN_CONFIRMATIONS = int(os.getenv("MIN_CONFIRMATIONS", "12"))
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
@@ -82,6 +95,7 @@ TIER_PRICES = {
 }
 FREE_KEY_SIGNUP_WINDOW_MINUTES = 60
 FREE_KEY_SIGNUP_LIMIT = 5
+EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 def _is_local_url(url: str) -> bool:
@@ -461,6 +475,113 @@ def get_client_ip(request: Request) -> str:
     if forwarded:
         return forwarded.split(",")[0].strip()
     return request.client.host if request.client else "unknown"
+
+
+def _smtp_send_message(message: EmailMessage) -> None:
+    if SMTP_USE_SSL:
+        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=10) as server:
+            if SMTP_USER:
+                server.login(SMTP_USER, SMTP_PASSWORD)
+            server.send_message(message)
+        return
+
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10) as server:
+        if SMTP_USE_TLS:
+            server.starttls()
+        if SMTP_USER:
+            server.login(SMTP_USER, SMTP_PASSWORD)
+        server.send_message(message)
+
+
+async def send_email(to_email: str, subject: str, text_body: str) -> bool:
+    """Best-effort SMTP email helper. Never blocks signup success."""
+    if not SMTP_HOST or not EMAIL_FROM:
+        return False
+
+    message = EmailMessage()
+    message["From"] = EMAIL_FROM
+    message["To"] = to_email
+    message["Subject"] = subject
+    message.set_content(text_body)
+
+    try:
+        await asyncio.to_thread(_smtp_send_message, message)
+        return True
+    except Exception as exc:
+        print(f"[mail] send failed for subject={subject!r}: {exc}")
+        return False
+
+
+def free_signup_admin_email(
+    *,
+    email: str,
+    name: str | None,
+    ref: str | None,
+    key_id: str,
+    created_at: str,
+) -> str:
+    base = BASE_URL.rstrip("/")
+    return (
+        "New Clearance Starter signup\n\n"
+        f"Email: {email}\n"
+        f"Name / agent: {name or 'not provided'}\n"
+        f"Referral: {ref or 'direct / none'}\n"
+        "Tier: starter\n"
+        "Credits: 50 clearances / month\n"
+        f"Key ID: {key_id}\n"
+        f"Created: {created_at}\n\n"
+        f"Admin: {base}/v1/admin/signups\n"
+    )
+
+
+def welcome_email_body() -> str:
+    base = BASE_URL.rstrip("/")
+    return (
+        "welcome to Clearance.\n\n"
+        "your free Starter key is live with 50 human-approved clearances per month.\n\n"
+        "security note: your API key was shown once in the browser. "
+        "we do not email API keys. store it before closing that tab.\n\n"
+        "quick path:\n"
+        f"1. create an approval request: POST {base}/v1/clearances\n"
+        "2. approve or deny from Telegram or the browser approval link.\n"
+        f"3. verify the token before your agent acts: GET {base}/v1/verify/{{token}}\n\n"
+        f"docs: {base}/docs\n"
+        f"support: {PAYMENT_SUPPORT_EMAIL}\n\n"
+        "agent proposes. human approves. service verifies.\n"
+    )
+
+
+async def send_free_signup_notifications(
+    *,
+    email: str,
+    name: str | None,
+    ref: str | None,
+    key_id: str,
+    created_at: str,
+) -> None:
+    if SIGNUP_NOTIFY_EMAIL:
+        sent = await send_email(
+            SIGNUP_NOTIFY_EMAIL,
+            f"New Clearance free signup: {email}",
+            free_signup_admin_email(
+                email=email,
+                name=name,
+                ref=ref,
+                key_id=key_id,
+                created_at=created_at,
+            ),
+        )
+        if not sent:
+            print(f"[mail] signup admin notification not sent for {key_id}: SMTP not configured or failed")
+
+    if WELCOME_EMAILS_ENABLED:
+        sent = await send_email(
+            email,
+            "your Clearance starter key is live",
+            welcome_email_body(),
+        )
+        if not sent:
+            print(f"[mail] welcome email not sent for {key_id}: SMTP not configured or failed")
 
 
 def make_clearance_token(clearance_id: str, scope: str, budget_amount: float | None,
@@ -1261,13 +1382,17 @@ async def create_api_key(body: CreateAPIKey, request: Request):
     """Create a new API key. Starts on the free Starter tier (50 clearances/month)."""
     db = await get_db()
     try:
+        email = str(body.email).strip().lower()
+        if not EMAIL_PATTERN.match(email):
+            raise HTTPException(status_code=400, detail="A valid email is required")
+        name = body.name.strip() if body.name else None
         client_ip = get_client_ip(request)
         user_agent = request.headers.get("user-agent")
         cutoff = (datetime.now(timezone.utc) - timedelta(minutes=FREE_KEY_SIGNUP_WINDOW_MINUTES)).isoformat()
 
         cursor = await db.execute(
             "SELECT id, tier FROM api_keys WHERE email = ? AND active = 1",
-            (body.email,)
+            (email,)
         )
         existing = await cursor.fetchone()
         if existing:
@@ -1295,6 +1420,7 @@ async def create_api_key(body: CreateAPIKey, request: Request):
         raw_key = f"clr_live_{secrets.token_urlsafe(32)}"
         key_h = hash_key(raw_key)
         reset_at = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
+        created_at = now_iso()
 
         # Ambassador attribution: read the visit cookie set by /r/{name} or ?ref=.
         ref = _read_ref_cookie(request)
@@ -1302,7 +1428,7 @@ async def create_api_key(body: CreateAPIKey, request: Request):
         await db.execute(
             """INSERT INTO api_keys (id, key_hash, email, name, tier, credits_remaining, credits_reset_at, created_at, referred_by)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (key_id, key_h, body.email, body.name, "starter", 50, reset_at, now_iso(), ref)
+            (key_id, key_h, email, name, "starter", 50, reset_at, created_at, ref)
         )
         await db.commit()
 
@@ -1312,14 +1438,22 @@ async def create_api_key(body: CreateAPIKey, request: Request):
             (
                 key_id,
                 "key.created",
-                body.email,
+                email,
                 client_ip,
                 user_agent,
                 json.dumps({"tier": "starter", "referred_by": ref}),
-                now_iso(),
+                created_at,
             )
         )
         await db.commit()
+
+        await send_free_signup_notifications(
+            email=email,
+            name=name,
+            ref=ref,
+            key_id=key_id,
+            created_at=created_at,
+        )
 
         return APIKeyResponse(
             api_key=raw_key,

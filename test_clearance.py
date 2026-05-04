@@ -22,6 +22,19 @@ class ClearanceSmokeTests(unittest.TestCase):
         os.environ["PAYMENT_ENS"] = "spacegravy.base.eth"
         os.environ["USDC_CONTRACT"] = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
         os.environ["PAYMENT_SUPPORT_EMAIL"] = "consulting@nauti-labs.com"
+        os.environ["ADMIN_EMAIL"] = "consulting@nauti-labs.com"
+        os.environ["SIGNUP_NOTIFY_EMAIL"] = ""
+        os.environ["WELCOME_EMAILS_ENABLED"] = "false"
+        for mail_env in (
+            "EMAIL_FROM",
+            "SMTP_HOST",
+            "SMTP_PORT",
+            "SMTP_USER",
+            "SMTP_PASSWORD",
+            "SMTP_USE_TLS",
+            "SMTP_USE_SSL",
+        ):
+            os.environ.pop(mail_env, None)
         os.environ["MIN_CONFIRMATIONS"] = "12"
         os.environ.pop("STRIPE_SECRET_KEY", None)
         os.environ.pop("STRIPE_WEBHOOK_SECRET", None)
@@ -233,6 +246,42 @@ class ClearanceSmokeTests(unittest.TestCase):
         self.assertEqual(first.status_code, 200)
         self.assertEqual(second.status_code, 409)
         self.assertIn("already exists", second.json()["detail"])
+
+    def test_free_key_signup_sends_admin_and_optional_welcome_email(self):
+        self.app_module.SIGNUP_NOTIFY_EMAIL = "consulting@nauti-labs.com"
+        self.app_module.WELCOME_EMAILS_ENABLED = True
+
+        with patch.object(self.app_module, "send_email", new_callable=AsyncMock) as send_email:
+            send_email.return_value = True
+            with TestClient(self.app_module.app) as client:
+                response = client.post(
+                    "/v1/keys",
+                    json={"email": "Builder@Example.com", "name": "Felipe"},
+                )
+
+        self.assertEqual(response.status_code, 200)
+        raw_key = response.json()["api_key"]
+        self.assertEqual(send_email.await_count, 2)
+
+        admin_call = send_email.await_args_list[0].args
+        self.assertEqual(admin_call[0], "consulting@nauti-labs.com")
+        self.assertIn("New Clearance free signup", admin_call[1])
+        self.assertIn("builder@example.com", admin_call[2])
+        self.assertIn("Felipe", admin_call[2])
+        self.assertNotIn(raw_key, admin_call[2])
+
+        welcome_call = send_email.await_args_list[1].args
+        self.assertEqual(welcome_call[0], "builder@example.com")
+        self.assertIn("starter key is live", welcome_call[1])
+        self.assertIn("we do not email API keys", welcome_call[2])
+        self.assertNotIn(raw_key, welcome_call[2])
+
+    def test_free_key_signup_rejects_invalid_email(self):
+        with TestClient(self.app_module.app) as client:
+            response = client.post("/v1/keys", json={"email": "not-an-email"})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("valid email", response.json()["detail"])
 
     def test_free_key_signup_rate_limit_applies_per_ip(self):
         with TestClient(self.app_module.app) as client:
