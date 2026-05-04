@@ -493,7 +493,7 @@ def _smtp_send_message(message: EmailMessage) -> None:
         server.send_message(message)
 
 
-async def send_email(to_email: str, subject: str, text_body: str) -> bool:
+async def send_email(to_email: str, subject: str, text_body: str, html_body: str | None = None) -> bool:
     """Best-effort SMTP email helper. Never blocks signup success."""
     if not SMTP_HOST or not EMAIL_FROM:
         return False
@@ -503,6 +503,8 @@ async def send_email(to_email: str, subject: str, text_body: str) -> bool:
     message["To"] = to_email
     message["Subject"] = subject
     message.set_content(text_body)
+    if html_body:
+        message.add_alternative(html_body, subtype="html")
 
     try:
         await asyncio.to_thread(_smtp_send_message, message)
@@ -534,21 +536,98 @@ def free_signup_admin_email(
     )
 
 
-def welcome_email_body() -> str:
+def welcome_email_subject() -> str:
+    return "your Clearance starter key is live"
+
+
+def welcome_email_text_body() -> str:
     base = BASE_URL.rstrip("/")
     return (
         "welcome to Clearance.\n\n"
-        "your free Starter key is live with 50 human-approved clearances per month.\n\n"
+        "you just added a human approval layer between your agent and the real world.\n\n"
+        "your free Starter tier is live:\n"
+        "- 50 human-approved clearances per month\n"
+        "- approve or deny from Telegram or the browser\n"
+        "- verify the token before your agent acts\n\n"
         "security note: your API key was shown once in the browser. "
-        "we do not email API keys. store it before closing that tab.\n\n"
-        "quick path:\n"
-        f"1. create an approval request: POST {base}/v1/clearances\n"
-        "2. approve or deny from Telegram or the browser approval link.\n"
-        f"3. verify the token before your agent acts: GET {base}/v1/verify/{{token}}\n\n"
+        "we do not email API keys. if you closed the tab before storing it, create a new key or contact support.\n\n"
+        "the operating loop:\n"
+        "1. agent proposes an action.\n"
+        "2. Clearance sends it to a human.\n"
+        "3. human approves or denies.\n"
+        "4. your service verifies the token before doing anything expensive, risky, or irreversible.\n\n"
+        "quickstart:\n"
+        f"- create a request: POST {base}/v1/clearances\n"
+        f"- verify an approval token: GET {base}/v1/verify/{{token}}\n"
         f"docs: {base}/docs\n"
         f"support: {PAYMENT_SUPPORT_EMAIL}\n\n"
-        "agent proposes. human approves. service verifies.\n"
+        "agent proposes. human approves. service verifies.\n\n"
+        "welcome aboard,\n"
+        "Nauti-Labs\n"
     )
+
+
+def welcome_email_html_body() -> str:
+    base = BASE_URL.rstrip("/")
+    docs_url = f"{base}/docs"
+    return f"""<!doctype html>
+<html>
+  <body style="margin:0;background:#060708;color:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#060708;padding:32px 16px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;background:#101114;border:1px solid rgba(255,255,255,0.09);border-radius:14px;overflow:hidden;">
+            <tr>
+              <td style="padding:28px 30px;border-bottom:1px solid rgba(255,255,255,0.09);">
+                <div style="font-size:28px;line-height:1;color:#f59e0b;letter-spacing:3px;font-weight:800;">&gt;&gt;&gt;</div>
+                <h1 style="margin:18px 0 8px;font-size:28px;line-height:1.12;color:#ffffff;">your clearance layer is live</h1>
+                <p style="margin:0;color:#a9a3a5;font-size:15px;line-height:1.55;">you just added a human approval gate between agent intent and real-world action.</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:28px 30px;">
+                <p style="margin:0 0 18px;color:#f6f2f3;font-size:16px;line-height:1.6;">your free Starter tier is ready: <strong>50 human-approved clearances per month</strong>, with approval from Telegram or the browser and token verification before your agent acts.</p>
+                <div style="background:#16181d;border:1px solid rgba(245,158,11,0.28);border-radius:10px;padding:18px;margin:0 0 22px;">
+                  <div style="color:#f59e0b;font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;margin-bottom:10px;">security note</div>
+                  <p style="margin:0;color:#e2e8f0;font-size:14px;line-height:1.55;">your API key was shown once in the browser. we do not email API keys. if you closed the tab before storing it, create a new key or contact support.</p>
+                </div>
+                <h2 style="margin:0 0 12px;color:#ffffff;font-size:17px;">the loop</h2>
+                <ol style="margin:0 0 22px;padding-left:22px;color:#d8d3d5;font-size:15px;line-height:1.7;">
+                  <li>agent proposes an action.</li>
+                  <li>Clearance sends it to a human.</li>
+                  <li>human approves or denies.</li>
+                  <li>your service verifies the token before doing anything expensive, risky, or irreversible.</li>
+                </ol>
+                <table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 0 24px;">
+                  <tr>
+                    <td style="background:#f59e0b;border-radius:8px;">
+                      <a href="{html.escape(docs_url)}" style="display:inline-block;padding:12px 18px;color:#111111;text-decoration:none;font-weight:800;font-size:14px;">open the docs</a>
+                    </td>
+                  </tr>
+                </table>
+                <p style="margin:0;color:#a9a3a5;font-size:14px;line-height:1.6;">agent proposes. human approves. service verifies.</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:18px 30px;border-top:1px solid rgba(255,255,255,0.09);color:#6f696c;font-size:12px;line-height:1.5;">
+                Nauti-Labs / Clearance<br>
+                support: <a href="mailto:{html.escape(PAYMENT_SUPPORT_EMAIL)}" style="color:#a9a3a5;">{html.escape(PAYMENT_SUPPORT_EMAIL)}</a>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>"""
+
+
+def welcome_email_preview() -> dict:
+    return {
+        "subject": welcome_email_subject(),
+        "text": welcome_email_text_body(),
+        "html": welcome_email_html_body(),
+    }
 
 
 async def send_free_signup_notifications(
@@ -577,8 +656,9 @@ async def send_free_signup_notifications(
     if WELCOME_EMAILS_ENABLED:
         sent = await send_email(
             email,
-            "your Clearance starter key is live",
-            welcome_email_body(),
+            welcome_email_subject(),
+            welcome_email_text_body(),
+            welcome_email_html_body(),
         )
         if not sent:
             print(f"[mail] welcome email not sent for {key_id}: SMTP not configured or failed")

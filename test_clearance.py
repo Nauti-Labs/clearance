@@ -273,8 +273,12 @@ class ClearanceSmokeTests(unittest.TestCase):
         welcome_call = send_email.await_args_list[1].args
         self.assertEqual(welcome_call[0], "builder@example.com")
         self.assertIn("starter key is live", welcome_call[1])
+        self.assertIn("human approval layer", welcome_call[2])
         self.assertIn("we do not email API keys", welcome_call[2])
+        self.assertIn("your clearance layer is live", welcome_call[3])
+        self.assertIn("&gt;&gt;&gt;", welcome_call[3])
         self.assertNotIn(raw_key, welcome_call[2])
+        self.assertNotIn(raw_key, welcome_call[3])
 
     def test_free_key_signup_rejects_invalid_email(self):
         with TestClient(self.app_module.app) as client:
