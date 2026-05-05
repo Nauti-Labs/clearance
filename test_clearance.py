@@ -25,6 +25,7 @@ class ClearanceSmokeTests(unittest.TestCase):
         os.environ["ADMIN_EMAIL"] = "consulting@nauti-labs.com"
         os.environ["SIGNUP_NOTIFY_EMAIL"] = ""
         os.environ["WELCOME_EMAILS_ENABLED"] = "false"
+        os.environ.pop("BOT_BUILD_REQUEST_URL", None)
         for mail_env in (
             "EMAIL_FROM",
             "SMTP_HOST",
@@ -94,6 +95,29 @@ class ClearanceSmokeTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Nauti-Traffic", response.text)
         self.assertIn("Ambassador Leaderboard", response.text)
+
+    def test_landing_page_links_to_tutorial_and_bot_build_request(self):
+        with TestClient(self.app_module.app) as client:
+            response = client.get("/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('href="/tutorial"', response.text)
+        self.assertIn("Request a trading bot build", response.text)
+        self.assertIn("$125/hr", response.text)
+        self.assertIn("10-hour minimum", response.text)
+
+    def test_tutorial_page_serves_bot_integration_guide(self):
+        with TestClient(self.app_module.app) as client:
+            response = client.get("/tutorial")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Add Clearance to your bot", response.text)
+        self.assertIn("/static/tutorial/01-create-clearance.png", response.text)
+        self.assertIn("/static/tutorial/02-human-approval.png", response.text)
+        self.assertIn("/static/tutorial/03-verify-token.png", response.text)
+        self.assertIn("$125/hr", response.text)
+        self.assertIn("10-hour minimum", response.text)
+        self.assertIn("/v1/docs", response.text)
 
     def test_nauti_traffic_admin_updates_display_config(self):
         admin_path = "/nauti-traffic/admin/test_admin_secret_123456"

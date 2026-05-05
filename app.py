@@ -61,6 +61,22 @@ PAYMENT_CHAIN_ID = int(os.getenv("PAYMENT_CHAIN_ID", "8453"))
 PAYMENT_SUPPORT_EMAIL = os.getenv("PAYMENT_SUPPORT_EMAIL", "consulting@nauti-labs.com")
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", PAYMENT_SUPPORT_EMAIL)
 SIGNUP_NOTIFY_EMAIL = os.getenv("SIGNUP_NOTIFY_EMAIL", ADMIN_EMAIL)
+BOT_BUILD_REQUEST_SUBJECT = "Build my trading bot with Clearance"
+BOT_BUILD_REQUEST_BODY = (
+    "Hey Nauti-Labs,\n\n"
+    "I want help building a trading bot with Clearance approval gates.\n\n"
+    "I understand the default bot build rate is $125/hr with a 10-hour minimum engagement, "
+    "and that pricing can be discussed if the scope needs it.\n\n"
+    "Market / platform:\n"
+    "Budget / risk limits:\n"
+    "Paper trading first? yes/no:\n"
+    "Telegram approval needed? yes/no:\n\n"
+    "My notes:\n"
+)
+BOT_BUILD_REQUEST_URL = os.getenv(
+    "BOT_BUILD_REQUEST_URL",
+    f"mailto:{PAYMENT_SUPPORT_EMAIL}?subject={quote(BOT_BUILD_REQUEST_SUBJECT)}&body={quote(BOT_BUILD_REQUEST_BODY)}",
+)
 EMAIL_FROM = os.getenv("EMAIL_FROM", os.getenv("SMTP_FROM", os.getenv("SMTP_USER", PAYMENT_SUPPORT_EMAIL)))
 SMTP_HOST = os.getenv("SMTP_HOST", "")
 SMTP_PORT = int(os.getenv("SMTP_PORT") or ("465" if os.getenv("SMTP_USE_SSL", "").lower() in {"1", "true", "yes"} else "587"))
@@ -542,6 +558,9 @@ def welcome_email_subject() -> str:
 
 def welcome_email_text_body() -> str:
     base = BASE_URL.rstrip("/")
+    tutorial_url = f"{base}/tutorial"
+    docs_url = f"{base}/v1/docs"
+    build_url = BOT_BUILD_REQUEST_URL
     return (
         "welcome to Clearance.\n\n"
         "you just added a human approval layer between your agent and the real world.\n\n"
@@ -559,8 +578,13 @@ def welcome_email_text_body() -> str:
         "quickstart:\n"
         f"- create a request: POST {base}/v1/clearances\n"
         f"- verify an approval token: GET {base}/v1/verify/{{token}}\n"
-        f"docs: {base}/docs\n"
+        f"tutorial: {tutorial_url}\n"
+        f"api docs: {docs_url}\n"
         f"support: {PAYMENT_SUPPORT_EMAIL}\n\n"
+        "want Nauti-Labs to build the bot too?\n"
+        "Bot builds are $125/hr with a 10-hour minimum engagement. "
+        "If the scope or budget needs a conversation, reply and we can talk through it.\n"
+        f"request a build: {build_url}\n\n"
         "agent proposes. human approves. service verifies.\n\n"
         "welcome aboard,\n"
         "Nauti-Labs\n"
@@ -569,7 +593,9 @@ def welcome_email_text_body() -> str:
 
 def welcome_email_html_body() -> str:
     base = BASE_URL.rstrip("/")
-    docs_url = f"{base}/docs"
+    tutorial_url = f"{base}/tutorial"
+    docs_url = f"{base}/v1/docs"
+    build_url = BOT_BUILD_REQUEST_URL
     return f"""<!doctype html>
 <html>
   <body style="margin:0;background:#060708;color:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
@@ -601,10 +627,19 @@ def welcome_email_html_body() -> str:
                 <table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 0 24px;">
                   <tr>
                     <td style="background:#f59e0b;border-radius:8px;">
-                      <a href="{html.escape(docs_url)}" style="display:inline-block;padding:12px 18px;color:#111111;text-decoration:none;font-weight:800;font-size:14px;">open the docs</a>
+                      <a href="{html.escape(tutorial_url)}" style="display:inline-block;padding:12px 18px;color:#111111;text-decoration:none;font-weight:800;font-size:14px;">open the tutorial</a>
+                    </td>
+                    <td style="width:10px;"></td>
+                    <td style="background:#16181d;border:1px solid rgba(255,255,255,0.12);border-radius:8px;">
+                      <a href="{html.escape(docs_url)}" style="display:inline-block;padding:11px 16px;color:#e2e8f0;text-decoration:none;font-weight:800;font-size:14px;">api docs</a>
                     </td>
                   </tr>
                 </table>
+                <div style="background:#12141a;border:1px solid rgba(255,255,255,0.09);border-radius:10px;padding:18px;margin:0 0 22px;">
+                  <div style="color:#f59e0b;font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;margin-bottom:10px;">need the bot too?</div>
+                  <p style="margin:0 0 14px;color:#d8d3d5;font-size:14px;line-height:1.55;">Nauti-Labs builds paper-first trading bots with Clearance approval gates, Telegram decisions, risk limits, audit logs, and a kill switch. Default rate: <strong>$125/hr</strong>, <strong>10-hour minimum</strong>. If the scope or budget needs a conversation, reply and we can talk through it.</p>
+                  <a href="{html.escape(build_url)}" style="color:#f59e0b;text-decoration:none;font-weight:800;font-size:14px;">request a trading bot build →</a>
+                </div>
                 <p style="margin:0;color:#a9a3a5;font-size:14px;line-height:1.6;">agent proposes. human approves. service verifies.</p>
               </td>
             </tr>
@@ -2205,9 +2240,9 @@ async def landing_page(request: Request):
     await _record_visit(request, ref)
 
     response = templates.TemplateResponse(
+        request,
         "index.html",
         {
-            "request": request,
             "base_url": BASE_URL.rstrip("/"),
             "brand_url": BRAND_URL.rstrip("/"),
             "support_email": PAYMENT_SUPPORT_EMAIL,
@@ -2215,11 +2250,26 @@ async def landing_page(request: Request):
             "payment_wallet": PAYMENT_WALLET,
             "payment_chain_id": PAYMENT_CHAIN_ID,
             "usdc_contract": USDC_CONTRACT,
+            "bot_build_request_url": BOT_BUILD_REQUEST_URL,
         },
     )
     if ref:
         _set_ref_cookie(response, ref)
     return response
+
+
+@app.get("/tutorial", response_class=HTMLResponse, tags=["Pages"])
+async def bot_tutorial_page(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "tutorial.html",
+        {
+            "base_url": BASE_URL.rstrip("/"),
+            "brand_url": BRAND_URL.rstrip("/"),
+            "support_email": PAYMENT_SUPPORT_EMAIL,
+            "bot_build_request_url": BOT_BUILD_REQUEST_URL,
+        },
+    )
 
 
 @app.get("/r/{ambassador}", tags=["Pages"], include_in_schema=False)

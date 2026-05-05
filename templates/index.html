@@ -725,6 +725,12 @@
             max-width: 480px;
             margin-left: auto; margin-right: auto;
         }
+        .final-actions {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 12px;
+        }
 
         /* === FOOTER === */
         footer {
@@ -970,6 +976,7 @@
         </a>
         <div class="nav-links">
             <a href="#how">How it works</a>
+            <a href="/tutorial">Tutorial</a>
             <a href="#pricing">Pricing</a>
             <a href="#agents">For agents</a>
             <a href="/v1/docs" class="nav-cta">API Docs →</a>
@@ -990,7 +997,7 @@
                 <p class="lede">One API call. The human approves with one tap. Any service verifies the signed token. Built for agents that handle real budgets — not toy demos.</p>
                 <div class="hero-actions">
                     <button class="btn-primary" onclick="getFreeTier()">Get Free API Key →</button>
-                    <a href="/v1/docs" class="btn-secondary">$ read --docs</a>
+                    <a href="/tutorial" class="btn-secondary">$ add --to-bot</a>
                 </div>
                 <div class="hero-pills">
                     <div class="hero-pill"><span class="pill-dot">▸</span>50 free clearances/mo</div>
@@ -1243,8 +1250,11 @@ clearance = resp.json()
 <section class="final-cta">
     <div class="container">
         <h2>Ship safer agents <span class="accent">in 30 seconds.</span></h2>
-        <p>Free tier, no card, real production keys. Build the first integration today, scale when you actually need to.</p>
-        <button class="btn-primary" onclick="getFreeTier()" style="font-size: 15px; padding: 15px 28px;">Get Free API Key →</button>
+        <p>Free tier, no card, real production keys. Add Clearance to your own bot, or have Nauti-Labs build a paper-first trading bot at $125/hr with a 10-hour minimum.</p>
+        <div class="final-actions">
+            <button class="btn-primary" onclick="getFreeTier()" style="font-size: 15px; padding: 15px 28px;">Get Free API Key →</button>
+            <a class="btn-secondary" href="{{ bot_build_request_url }}" style="font-size: 15px; padding: 15px 28px;">Request a trading bot build</a>
+        </div>
     </div>
 </section>
 
@@ -1257,8 +1267,10 @@ clearance = resp.json()
         </div>
         <div class="footer-links">
             <a href="/v1/docs">API</a>
+            <a href="/tutorial">Tutorial</a>
             <a href="#how">How</a>
             <a href="#pricing">Pricing</a>
+            <a href="{{ bot_build_request_url }}">Bot build</a>
             <a href="mailto:{{ support_email }}">Contact</a>
         </div>
     </div>

@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Add Clearance to a Trading Bot - Nauti-Labs</title>
+    <meta name="description" content="A practical tutorial for adding Clearance human approval gates to an AI trading bot or agent.">
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="{{ base_url }}/tutorial">
+    <meta property="og:title" content="Add Clearance to a Trading Bot">
+    <meta property="og:description" content="Agent proposes. Human approves. Bot verifies before execution.">
+    <meta property="og:image" content="{{ base_url }}/static/og.png">
+    <meta name="theme-color" content="#15151a">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg: #15151a;
+            --surface: #1f1f27;
+            --surface-2: #25252e;
+            --border: #2a2a33;
+            --border-2: #353541;
+            --amber: #E8912D;
+            --amber-bright: #f0a040;
+            --amber-soft: rgba(232, 145, 45, 0.12);
+            --text: #ececf0;
+            --text-dim: #b8b8c0;
+            --muted: #7a7a85;
+            --dim: #4a4a55;
+            --green: #4ade80;
+            --green-soft: rgba(74, 222, 128, 0.12);
+            --indigo: #818cf8;
+            --indigo-soft: rgba(129, 140, 248, 0.12);
+            --red: #f87171;
+            --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+            --font-mono: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+        }
+        html { scroll-behavior: smooth; }
+        body {
+            font-family: var(--font-sans);
+            background: var(--bg);
+            background-image:
+                radial-gradient(ellipse 80% 50% at 50% -10%, rgba(232, 145, 45, 0.08), transparent 60%),
+                radial-gradient(ellipse 60% 50% at 100% 100%, rgba(129, 140, 248, 0.06), transparent 60%);
+            color: var(--text);
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+            overflow-x: hidden;
+        }
+        .container { max-width: 1120px; margin: 0 auto; padding: 0 28px; }
+        nav {
+            position: sticky; top: 0; z-index: 100;
+            backdrop-filter: blur(12px) saturate(140%);
+            background: rgba(21, 21, 26, 0.76);
+            border-bottom: 1px solid var(--border);
+        }
+        nav .inner {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 16px 0;
+        }
+        .brand {
+            display: flex; align-items: center; gap: 10px;
+            color: var(--text); text-decoration: none;
+        }
+        .brand-mark { width: 30px; height: 30px; color: var(--amber); flex-shrink: 0; }
+        .brand-mark svg { width: 100%; height: 100%; display: block; }
+        .brand-name { font-size: 16px; font-weight: 700; }
+        .brand-by {
+            font-family: var(--font-mono);
+            font-size: 11px; color: var(--muted);
+            border-left: 1px solid var(--border-2);
+            padding-left: 10px; margin-left: 4px;
+        }
+        .nav-links { display: flex; gap: 24px; align-items: center; }
+        .nav-links a {
+            color: var(--text-dim); text-decoration: none;
+            font-size: 14px; font-weight: 500;
+        }
+        .nav-links a:hover { color: var(--text); }
+        .nav-cta {
+            background: var(--amber); color: #1a1a1f !important;
+            padding: 8px 14px; border-radius: 8px; font-weight: 700 !important;
+        }
+        .hero { padding: 78px 0 44px; border-bottom: 1px solid var(--border); }
+        .hero-grid {
+            display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+            gap: 48px; align-items: center;
+        }
+        .hero-grid > *, .shot-card, .step, .cta-panel, .code-wrap { min-width: 0; }
+        .eyebrow {
+            font-family: var(--font-mono);
+            color: var(--amber); font-size: 12px; margin-bottom: 18px;
+        }
+        h1 {
+            font-size: clamp(38px, 5vw, 58px);
+            line-height: 1.04; letter-spacing: -0.03em;
+            color: #fafafd; margin-bottom: 18px;
+            overflow-wrap: break-word;
+        }
+        .lede {
+            color: var(--text-dim); font-size: 18px;
+            max-width: 620px; margin-bottom: 28px;
+            overflow-wrap: break-word;
+        }
+        .actions { display: flex; flex-wrap: wrap; gap: 12px; }
+        .btn-primary, .btn-secondary {
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+            padding: 13px 20px; border-radius: 10px;
+            font-size: 14px; font-weight: 700; text-decoration: none;
+            font-family: inherit;
+        }
+        .btn-primary {
+            background: var(--amber); color: #1a1a1f;
+            box-shadow: 0 12px 32px rgba(232, 145, 45, 0.22);
+        }
+        .btn-primary:hover { background: var(--amber-bright); transform: translateY(-1px); }
+        .btn-secondary {
+            background: var(--surface); color: var(--text);
+            border: 1px solid var(--border-2);
+            font-family: var(--font-mono);
+        }
+        .btn-secondary:hover { border-color: var(--amber); transform: translateY(-1px); }
+        .hero-panel {
+            background: #0e0e13;
+            border: 1px solid var(--border-2);
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.42);
+        }
+        .panel-head {
+            display: flex; gap: 8px; align-items: center;
+            padding: 12px 16px; border-bottom: 1px solid var(--border);
+            background: #0a0a0f;
+        }
+        .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--dim); }
+        .dot.r { background: #ff5f57; } .dot.y { background: #febc2e; } .dot.g { background: #28c840; }
+        .panel-title { margin-left: 10px; color: var(--muted); font-family: var(--font-mono); font-size: 12px; }
+        .flow {
+            padding: 22px;
+            display: grid; gap: 12px;
+        }
+        .flow-row {
+            display: grid; grid-template-columns: 84px 1fr; gap: 14px; align-items: start;
+            padding: 14px; border: 1px solid var(--border); border-radius: 12px;
+            background: rgba(255, 255, 255, 0.018);
+        }
+        .flow-tag {
+            font-family: var(--font-mono); color: var(--amber);
+            font-size: 11px; font-weight: 800;
+        }
+        .flow-row strong { color: #fafafd; display: block; margin-bottom: 2px; }
+        .flow-row span { color: var(--text-dim); font-size: 13px; }
+        .flow-row strong, .flow-row span, .step p, .shot-copy p, .cta-panel p { overflow-wrap: break-word; }
+        section { padding: 72px 0; border-bottom: 1px solid var(--border); }
+        .section-kicker {
+            font-family: var(--font-mono);
+            color: var(--amber); font-size: 12px; margin-bottom: 10px;
+            text-align: center;
+        }
+        .section-title {
+            text-align: center; color: #fafafd;
+            font-size: clamp(28px, 3.5vw, 40px);
+            line-height: 1.1; letter-spacing: -0.02em; margin-bottom: 12px;
+        }
+        .section-sub {
+            text-align: center; color: var(--muted);
+            max-width: 680px; margin: 0 auto 42px;
+            font-size: 16px;
+        }
+        .shot-grid {
+            display: grid; grid-template-columns: repeat(3, 1fr);
+            gap: 18px;
+        }
+        .shot-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            overflow: hidden;
+        }
+        .shot-card img {
+            display: block; width: 100%; height: auto;
+            background: #0e0e13;
+            border-bottom: 1px solid var(--border);
+        }
+        .shot-copy { padding: 18px; }
+        .shot-copy h3 { color: #fafafd; font-size: 17px; margin-bottom: 6px; }
+        .shot-copy p { color: var(--text-dim); font-size: 14px; }
+        .steps {
+            display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 18px;
+        }
+        .step {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 24px;
+        }
+        .step-num {
+            font-family: var(--font-mono);
+            color: var(--amber); font-size: 12px; font-weight: 800;
+            margin-bottom: 12px;
+        }
+        .step h3 { color: #fafafd; font-size: 19px; margin-bottom: 8px; }
+        .step p { color: var(--text-dim); font-size: 14px; }
+        .code-wrap {
+            max-width: 940px; margin: 0 auto;
+            background: #0e0e13;
+            border: 1px solid var(--border-2);
+            border-radius: 14px;
+            overflow: hidden;
+            box-shadow: 0 24px 60px rgba(0,0,0,0.3);
+        }
+        .code-head {
+            padding: 12px 16px; border-bottom: 1px solid var(--border);
+            color: var(--muted); font-family: var(--font-mono); font-size: 12px;
+            background: #0a0a0f;
+        }
+        pre {
+            padding: 22px 24px; overflow-x: auto;
+            color: var(--text); font-family: var(--font-mono);
+            font-size: 13px; line-height: 1.72;
+        }
+        .comment { color: var(--dim); font-style: italic; }
+        .string { color: #86efac; }
+        .key { color: var(--amber); }
+        .cta-panel {
+            background: linear-gradient(180deg, rgba(232,145,45,0.12), rgba(255,255,255,0.018)), var(--surface);
+            border: 1px solid rgba(232,145,45,0.34);
+            border-radius: 16px;
+            padding: 34px;
+            display: grid; grid-template-columns: 1fr auto;
+            gap: 24px; align-items: center;
+        }
+        .cta-panel h2 { color: #fafafd; font-size: 28px; line-height: 1.15; margin-bottom: 8px; }
+        .cta-panel p { color: var(--text-dim); max-width: 660px; }
+        footer {
+            padding: 40px 0 60px;
+            color: var(--muted);
+            font-family: var(--font-mono); font-size: 13px;
+        }
+        footer .inner { display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
+        footer a { color: var(--amber); text-decoration: none; }
+        .footer-links { display: flex; gap: 20px; flex-wrap: wrap; }
+        @media (max-width: 900px) {
+            .hero-grid, .cta-panel { grid-template-columns: 1fr; }
+            .shot-grid, .steps { grid-template-columns: 1fr; }
+            .nav-links a:not(.nav-cta) { display: none; }
+            .brand-by { display: none; }
+        }
+        @media (max-width: 520px) {
+            .container { padding: 0 20px; }
+            .hero { padding: 52px 0 34px; }
+            h1 { font-size: 31px; letter-spacing: 0; }
+            .lede { font-size: 16px; }
+            .hero-panel { width: 100%; }
+            .flow-row { grid-template-columns: 1fr; }
+            .cta-panel { padding: 24px; }
+        }
+    </style>
+</head>
+<body>
+<nav>
+    <div class="container inner">
+        <a href="/" class="brand">
+            <span class="brand-mark" aria-hidden="true">
+                <svg viewBox="0 0 100 100" fill="none">
+                    <path d="M 18 30 L 38 50 L 18 70" stroke="currentColor" stroke-width="11" stroke-linecap="square" stroke-linejoin="miter" opacity="0.45" fill="none"/>
+                    <path d="M 40 30 L 60 50 L 40 70" stroke="currentColor" stroke-width="11" stroke-linecap="square" stroke-linejoin="miter" opacity="0.75" fill="none"/>
+                    <path d="M 62 30 L 82 50 L 62 70" stroke="currentColor" stroke-width="11" stroke-linecap="square" stroke-linejoin="miter" fill="none"/>
+                </svg>
+            </span>
+            <span class="brand-name">Clearance</span>
+            <span class="brand-by">by Nauti-Labs</span>
+        </a>
+        <div class="nav-links">
+            <a href="/">Home</a>
+            <a href="#steps">Steps</a>
+            <a href="#code">Code</a>
+            <a href="{{ bot_build_request_url }}">Request bot build</a>
+            <a class="nav-cta" href="/v1/docs">API Docs</a>
+        </div>
+    </div>
+</nav>
+
+<main>
+    <section class="hero">
+        <div class="container hero-grid">
+            <div>
+                <div class="eyebrow">// tutorial</div>
+                <h1>Add Clearance to your bot before it touches real money.</h1>
+                <p class="lede">This is the core integration pattern for trading bots, purchasing agents, and any workflow where an autonomous system needs human approval before execution.</p>
+                <div class="actions">
+                    <a class="btn-primary" href="#code">Use the Python example</a>
+                    <a class="btn-secondary" href="{{ bot_build_request_url }}">Have Nauti-Labs build it</a>
+                </div>
+            </div>
+            <div class="hero-panel" aria-label="Clearance flow summary">
+                <div class="panel-head">
+                    <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+                    <span class="panel-title">bot.clearance.loop</span>
+                </div>
+                <div class="flow">
+                    <div class="flow-row">
+                        <div class="flow-tag">01 BOT</div>
+                        <div><strong>request clearance</strong><span>Send action, scope, budget, and metadata before placing the trade.</span></div>
+                    </div>
+                    <div class="flow-row">
+                        <div class="flow-tag">02 HUMAN</div>
+                        <div><strong>approve or deny</strong><span>Telegram or browser approval creates an auditable human decision.</span></div>
+                    </div>
+                    <div class="flow-row">
+                        <div class="flow-tag">03 BOT</div>
+                        <div><strong>verify token, then execute</strong><span>The bot acts only after token verification matches the requested scope and budget.</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="screenshots">
+        <div class="container">
+            <div class="section-kicker">// screenshots</div>
+            <h2 class="section-title">What the integration looks like</h2>
+            <p class="section-sub">Three surfaces matter: the bot request, the human approval, and the final verification gate before execution.</p>
+            <div class="shot-grid">
+                <article class="shot-card">
+                    <img src="/static/tutorial/01-create-clearance.png" alt="Bot creates a Clearance request before a trade">
+                    <div class="shot-copy">
+                        <h3>1. Bot creates a request</h3>
+                        <p>Before placing an order, the bot posts the action, scope, budget, and context to Clearance.</p>
+                    </div>
+                </article>
+                <article class="shot-card">
+                    <img src="/static/tutorial/02-human-approval.png" alt="Human approves or denies from Telegram or browser">
+                    <div class="shot-copy">
+                        <h3>2. Human approves or denies</h3>
+                        <p>The approver gets a Telegram or browser prompt with the exact action and budget.</p>
+                    </div>
+                </article>
+                <article class="shot-card">
+                    <img src="/static/tutorial/03-verify-token.png" alt="Bot verifies the Clearance token before execution">
+                    <div class="shot-copy">
+                        <h3>3. Bot verifies before execution</h3>
+                        <p>The bot verifies the signed token and refuses to trade if scope or budget does not match.</p>
+                    </div>
+                </article>
+            </div>
+        </div>
+    </section>
+
+    <section id="steps">
+        <div class="container">
+            <div class="section-kicker">// install pattern</div>
+            <h2 class="section-title">Drop this gate into any bot</h2>
+            <p class="section-sub">Use these steps whether your bot trades crypto, bids on domains, buys ads, books travel, or triggers any expensive action.</p>
+            <div class="steps">
+                <div class="step">
+                    <div class="step-num">STEP 01</div>
+                    <h3>Get an API key</h3>
+                    <p>Create a free Starter key from the homepage and store it in your bot environment as <code>CLEARANCE_API_KEY</code>. Do not hardcode it.</p>
+                </div>
+                <div class="step">
+                    <div class="step-num">STEP 02</div>
+                    <h3>Wrap the risky action</h3>
+                    <p>Before a trade, create a Clearance request with a machine-readable scope such as <code>trade:crypto:BTC:buy</code>.</p>
+                </div>
+                <div class="step">
+                    <div class="step-num">STEP 03</div>
+                    <h3>Wait for a decision</h3>
+                    <p>Send the approval URL to the human, rely on Telegram notifications, or poll <code>/v1/clearances/{id}</code> until approved or denied.</p>
+                </div>
+                <div class="step">
+                    <div class="step-num">STEP 04</div>
+                    <h3>Verify before execution</h3>
+                    <p>Call <code>/v1/verify/{token}</code>. Only execute when the token is valid and the scope, budget, and currency match the pending action.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="code">
+        <div class="container">
+            <div class="section-kicker">// python example</div>
+            <h2 class="section-title">Minimal trading bot wrapper</h2>
+            <p class="section-sub">Replace <code>place_trade()</code> with your exchange, broker, marketplace, or wallet execution function.</p>
+            <div class="code-wrap">
+                <div class="code-head">clearance_gate.py</div>
+<pre>import os
+import time
+import requests
+
+CLEARANCE_BASE_URL = os.getenv("CLEARANCE_BASE_URL", "{{ base_url }}")
+CLEARANCE_API_KEY = os.environ["CLEARANCE_API_KEY"]
+
+
+def request_trade_clearance(symbol, side, platform, max_usd):
+    response = requests.post(
+        f"{CLEARANCE_BASE_URL}/v1/clearances",
+        headers={"X-API-Key": CLEARANCE_API_KEY},
+        json={
+            "title": f"{side.upper()} {symbol} on {platform}",
+            "description": f"Bot wants to {side} {symbol} with a max budget of ${max_usd}.",
+            "scope": f"trade:{platform}:{symbol}:{side}",
+            "budget_amount": max_usd,
+            "budget_currency": "USD",
+            "metadata": {
+                "bot": "my-trading-bot",
+                "symbol": symbol,
+                "side": side,
+                "platform": platform,
+            },
+        },
+        timeout=10,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def wait_for_decision(clearance_id, timeout_seconds=900):
+    deadline = time.time() + timeout_seconds
+    while time.time() &lt; deadline:
+        response = requests.get(
+            f"{CLEARANCE_BASE_URL}/v1/clearances/{clearance_id}",
+            headers={"X-API-Key": CLEARANCE_API_KEY},
+            timeout=10,
+        )
+        response.raise_for_status()
+        clearance = response.json()
+
+        if clearance["status"] == "approved":
+            return clearance["token"]
+        if clearance["status"] in {"denied", "expired", "revoked"}:
+            raise RuntimeError(f"trade blocked: {clearance['status']}")
+
+        time.sleep(5)
+
+    raise TimeoutError("trade blocked: no human decision before timeout")
+
+
+def verify_clearance_token(token, expected_scope, max_usd):
+    response = requests.get(f"{CLEARANCE_BASE_URL}/v1/verify/{token}", timeout=10)
+    response.raise_for_status()
+    verification = response.json()
+
+    if not verification["valid"]:
+        raise RuntimeError("trade blocked: invalid Clearance token")
+    if verification["scope"] != expected_scope:
+        raise RuntimeError("trade blocked: scope mismatch")
+    if verification["budget_currency"] != "USD":
+        raise RuntimeError("trade blocked: currency mismatch")
+    if float(verification["budget_amount"]) &lt; float(max_usd):
+        raise RuntimeError("trade blocked: approved budget too small")
+
+    return verification
+
+
+def place_trade(symbol, side, platform, max_usd):
+    <span class="comment"># Your exchange, wallet, broker, or marketplace call goes here.</span>
+    print(f"EXECUTE {side} {symbol} on {platform} up to ${max_usd}")
+
+
+def trade_with_clearance(symbol, side, platform, max_usd):
+    expected_scope = f"trade:{platform}:{symbol}:{side}"
+    clearance = request_trade_clearance(symbol, side, platform, max_usd)
+    print("waiting for human approval:", clearance["approval_url"])
+
+    token = wait_for_decision(clearance["id"])
+    verify_clearance_token(token, expected_scope, max_usd)
+
+    place_trade(symbol, side, platform, max_usd)
+</pre>
+            </div>
+        </div>
+    </section>
+
+    <section id="build">
+        <div class="container">
+            <div class="cta-panel">
+                <div>
+                    <div class="section-kicker" style="text-align:left;margin-bottom:8px;">// need the bot too?</div>
+                    <h2>Have Nauti-Labs build the trading bot.</h2>
+                    <p>If you do not already have a bot, request a paper-first build with Clearance approval gates, Telegram decisions, risk limits, audit logs, and a kill switch before real execution. Standard build work is $125/hr with a 10-hour minimum engagement, and we can talk through scope if the project or budget needs it.</p>
+                </div>
+                <a class="btn-primary" href="{{ bot_build_request_url }}">Request a trading bot build</a>
+            </div>
+        </div>
+    </section>
+</main>
+
+<footer>
+    <div class="container inner">
+        <div><strong>Clearance</strong> by <a href="{{ brand_url }}">Nauti-Labs</a></div>
+        <div class="footer-links">
+            <a href="/">Home</a>
+            <a href="/v1/docs">API Docs</a>
+            <a href="{{ bot_build_request_url }}">Request bot build</a>
+            <a href="mailto:{{ support_email }}">Contact</a>
+        </div>
+    </div>
+</footer>
+</body>
+</html>
