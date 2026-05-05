@@ -41,7 +41,8 @@
     "elimoni": "/static/avatars/elimoni.png",
     "alex": "/static/avatars/alex.png",
     "angela_dubois": "/static/avatars/angela_dubois.png",
-    "rook": "/static/avatars/rook.png"
+    "rook": "/static/avatars/rook.png",
+    "mikun": "/static/avatars/mikun.png"
   },
 
   "trusted_by": [
