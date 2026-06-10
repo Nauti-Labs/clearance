@@ -8,6 +8,7 @@ The missing auth layer between human intent and agent execution.
 import os
 import re
 import json
+import logging
 import secrets
 import hashlib
 import html
@@ -89,6 +90,11 @@ USDC_CONTRACT = os.getenv("USDC_CONTRACT", "")
 MIN_CONFIRMATIONS = int(os.getenv("MIN_CONFIRMATIONS", "12"))
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+if STRIPE_SECRET_KEY and not STRIPE_WEBHOOK_SECRET:
+    logging.getLogger("clearance.stripe").warning(
+        "STRIPE_WEBHOOK_SECRET is not set while STRIPE_SECRET_KEY is configured: "
+        "/v1/payments/stripe/webhook will reject all deliveries with 503 until it is set."
+    )
 STRIPE_SUCCESS_URL = os.getenv("STRIPE_SUCCESS_URL", f"{BASE_URL.rstrip('/')}/?checkout=success")
 STRIPE_CANCEL_URL = os.getenv("STRIPE_CANCEL_URL", f"{BASE_URL.rstrip('/')}/?checkout=cancelled")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
@@ -3068,6 +3074,11 @@ async def create_stripe_checkout_session(request: Request):
 async def stripe_webhook(request: Request):
     """Fulfill paid tiers from signed Stripe Checkout webhooks."""
     if not STRIPE_WEBHOOK_SECRET or stripe is None:
+        logging.getLogger("clearance.stripe").warning(
+            "Stripe webhook delivery rejected (503): %s. "
+            "Card payments cannot be fulfilled via webhook until this is fixed.",
+            "STRIPE_WEBHOOK_SECRET is unset" if not STRIPE_WEBHOOK_SECRET else "stripe SDK is not installed",
+        )
         raise HTTPException(status_code=503, detail="Stripe webhook is not configured.")
 
     payload = await request.body()
