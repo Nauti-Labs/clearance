@@ -6724,10 +6724,10 @@ def _agent_income_x402_requirements(service: dict, resource_url: str, recipient:
             "bazaar": {
                 "info": {
                     "input": {
+                        # Discovery probes use GET for the 402 challenge; paid work is POST after settle.
                         "type": "http",
-                        "method": "POST",
-                        "bodyType": "json",
-                        "body": service.get("input_example")
+                        "method": "GET",
+                        "queryParams": service.get("input_example")
                         or {
                             "project_url": "https://github.com/example/x402-app",
                             "agent_type": "both",
