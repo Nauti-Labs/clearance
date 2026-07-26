@@ -6723,12 +6723,53 @@ def _agent_income_x402_requirements(service: dict, resource_url: str, recipient:
         "extensions": {
             "bazaar": {
                 "info": {
-                    "name": service["label"],
-                    "description": service["description"],
-                    "method": "POST",
+                    "input": {
+                        "type": "http",
+                        "method": "POST",
+                        "bodyType": "json",
+                        "body": service.get("input_example")
+                        or {
+                            "project_url": "https://github.com/example/x402-app",
+                            "agent_type": "both",
+                            "payment_goal": "both",
+                            "current_stack": "custom",
+                        },
+                    },
+                    "output": {
+                        "type": "json",
+                        "example": service.get("output_example")
+                        or {
+                            "score": 82,
+                            "summary": "Payment flow is partially ready for agent spend control.",
+                            "risks": ["missing reserve/commit on concurrent tool pays"],
+                            "next_steps": ["add per-window budget", "emit evaluation trace on receipts"],
+                        },
+                    },
                 },
-                "inputSchema": service.get("input_schema"),
-                "outputSchema": service.get("output_schema"),
+                "schema": {
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "type": "object",
+                    "properties": {
+                        "input": {
+                            "type": "object",
+                            "properties": {
+                                "type": {"type": "string"},
+                                "method": {"type": "string"},
+                                "bodyType": {"type": "string"},
+                                "body": {"type": "object"},
+                            },
+                            "required": ["type", "method"],
+                        },
+                        "output": {
+                            "type": "object",
+                            "properties": {
+                                "type": {"type": "string"},
+                                "example": {"type": "object"},
+                            },
+                        },
+                    },
+                    "required": ["input"],
+                },
             }
         },
     }
