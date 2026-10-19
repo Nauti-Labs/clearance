@@ -241,7 +241,7 @@
             </div>
             <h1>{{ household_name }} money command center.</h1>
             <p class="lede">
-                Shared visibility, human approvals before any release, and one clean place for Justin and Nicole to watch balances, due dates, subscriptions, debt payoff momentum, and red-flag alerts.
+                Shared visibility, human approvals before any release, and one clean place for the household to watch balances, due dates, subscriptions, debt payoff momentum, and red-flag alerts.
             </p>
             <div class="points">
                 <div class="point">
@@ -264,14 +264,14 @@
             <p class="subcopy">Choose who is logging in, enter the household passcode, and the dashboard stays fast after that.</p>
 
             <div class="who-grid">
-                <button class="who-btn active" type="button" data-user="justin">
-                    Justin
-                    <span>Operations and approvals</span>
+                {% for user in family_users %}
+                <button class="who-btn{% if loop.first %} active{% endif %}" type="button" data-user="{{ user.username }}">
+                    {{ user.display_name }}
+                    <span>{{ user.role }}</span>
                 </button>
-                <button class="who-btn" type="button" data-user="nicole">
-                    Nicole
-                    <span>Co-pilot and approvals</span>
-                </button>
+                {% else %}
+                <p>Family access is not configured. Set the family passcode variables before use.</p>
+                {% endfor %}
             </div>
 
             <label for="passcode">Passcode</label>
@@ -280,13 +280,13 @@
             <div class="notice" id="notice"></div>
 
             <div class="footer">
-                Login stays on this machine with a signed session cookie. Before real family use, set `FAMILY_JUSTIN_PASSCODE`, `FAMILY_NICOLE_PASSCODE`, and `FAMILY_SYNC_TOKEN`.
+                Login stays on this machine with a signed session cookie. Before real family use, set the family passcode variables and `FAMILY_SYNC_TOKEN`.
             </div>
         </section>
     </div>
 
     <script>
-        let selectedUser = 'justin';
+        let selectedUser = {{ (family_users[0].username if family_users else '') | tojson }};
         const notice = document.getElementById('notice');
         const passcodeInput = document.getElementById('passcode');
 
