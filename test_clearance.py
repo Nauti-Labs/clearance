@@ -15,6 +15,10 @@ class ClearanceSmokeTests(unittest.TestCase):
 
         os.environ["DB_PATH"] = self.db_path
         os.environ["JWT_SECRET_KEY"] = "test-secret-not-for-production"
+        os.environ["BOT_COMM_PASSWORD"] = "test-bot-comm-password"
+        os.environ.pop("TRAFFIC_BOARD_PASSWORD", None)
+        os.environ.pop("TRAFFIC_KNOWN_USERS", None)
+        os.environ.pop("AGENT_OUTREACH_TARGETS", None)
         os.environ["BASE_URL"] = "http://localhost:8000"
         os.environ["TOKEN_ISSUER"] = "http://localhost:8000"
         os.environ["BRAND_URL"] = "https://nauti-labs.com"
@@ -443,7 +447,7 @@ class ClearanceSmokeTests(unittest.TestCase):
                             "source_key": "capital_one",
                             "external_id": "chk1",
                             "institution": "Capital One",
-                            "name": "LeBlanc Checking",
+                            "name": "Household Checking",
                             "account_type": "checking",
                             "balance": 4825.42,
                             "available": 4560.11,
@@ -497,7 +501,7 @@ class ClearanceSmokeTests(unittest.TestCase):
                     ],
                     "credit_scores": [
                         {
-                            "person_name": "Nicole",
+                            "person_name": "Member",
                             "bureau": "Experian",
                             "score": 702,
                             "source_key": "capital_one",
@@ -570,6 +574,26 @@ class ClearanceSmokeTests(unittest.TestCase):
 
         self.assertEqual(decided.status_code, 200)
         self.assertEqual(decided.json()["status"], "approved_for_release")
+
+    def test_startup_rejects_missing_required_secrets(self):
+        os.environ["JWT_SECRET_KEY"] = ""
+        os.environ["BOT_COMM_PASSWORD"] = ""
+        reloaded = importlib.reload(self.app_module)
+        with self.assertRaises(RuntimeError) as caught:
+            with TestClient(reloaded.app):
+                pass
+        message = str(caught.exception)
+        self.assertIn("JWT_SECRET_KEY", message)
+        self.assertIn("BOT_COMM_PASSWORD", message)
+        self.assertIn("Refusing to start", message)
+
+    def test_family_login_uses_configured_names(self):
+        with TestClient(self.app_module.app) as client:
+            page = client.get("/family/login")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn("justin", page.text)
+        self.assertIn("nicole", page.text)
+        self.assertNotIn("LeBlanc", page.text)
 
 
 if __name__ == "__main__":

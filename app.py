@@ -94,8 +94,7 @@ from sms_service import (
 
 load_dotenv()
 
-DEFAULT_JWT_SECRET = "dev-secret-change-in-production"
-JWT_SECRET = os.getenv("JWT_SECRET_KEY", DEFAULT_JWT_SECRET)
+JWT_SECRET = os.getenv("JWT_SECRET_KEY", "").strip()
 JWT_ALGORITHM = "HS256"
 BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
 SCRAM_BASE_URL = os.getenv("SCRAM_BASE_URL", os.getenv("PUBLIC_SCRAM_URL", f"{BASE_URL.rstrip('/')}/scram")).rstrip("/")
@@ -184,7 +183,7 @@ FAMILY_SESSION_COOKIE = os.getenv("FAMILY_SESSION_COOKIE", "clearance_family_ses
 FAMILY_SESSION_HOURS = int(os.getenv("FAMILY_SESSION_HOURS", "18"))
 FAMILY_SYNC_TOKEN = os.getenv("FAMILY_SYNC_TOKEN", "")
 FAMILY_PRODUCT_NAME = os.getenv("FAMILY_PRODUCT_NAME", "Harbor Ledger")
-FAMILY_HOUSEHOLD_NAME = os.getenv("FAMILY_HOUSEHOLD_NAME", "LeBlanc Family")
+FAMILY_HOUSEHOLD_NAME = os.getenv("FAMILY_HOUSEHOLD_NAME", "Household").strip() or "Household"
 AGENT_INCOME_PASSWORD = os.getenv("AGENT_INCOME_PASSWORD", "")
 AGENT_INCOME_SESSION_COOKIE = os.getenv("AGENT_INCOME_SESSION_COOKIE", "clearance_agent_income_session")
 AGENT_INCOME_SESSION_HOURS = int(os.getenv("AGENT_INCOME_SESSION_HOURS", "12"))
@@ -233,13 +232,13 @@ AGENT_INCOME_PAYANAGENT_API_KEY = os.getenv(
     os.getenv("PAYANAGENT_API_KEY", ""),
 ).strip()
 AGENT_INCOME_PAYANAGENT_AGENT_ID = os.getenv("AGENT_INCOME_PAYANAGENT_AGENT_ID", "").strip()
-BOT_COMM_PASSWORD = os.getenv("BOT_COMM_PASSWORD", "Restio2027&")
-TRAFFIC_BOARD_PASSWORD = os.getenv("TRAFFIC_BOARD_PASSWORD", BOT_COMM_PASSWORD)
+BOT_COMM_PASSWORD = os.getenv("BOT_COMM_PASSWORD", "").strip()
+TRAFFIC_BOARD_PASSWORD = os.getenv("TRAFFIC_BOARD_PASSWORD", "").strip() or BOT_COMM_PASSWORD
 TRAFFIC_IP_CACHE_PATH = Path(os.getenv("CLEARANCE_TRAFFIC_IP_CACHE_PATH", "data/traffic_ip_cache.json"))
 TRAFFIC_IP_ENRICH = os.getenv("CLEARANCE_TRAFFIC_IP_ENRICH", "1").lower() not in {"0", "false", "no"}
 TRAFFIC_KNOWN_USERS = {
     ip.strip(): label.strip()
-    for item in os.getenv("TRAFFIC_KNOWN_USERS", "47.161.205.86=Justin / Nauti-Labs owner").split(",")
+    for item in os.getenv("TRAFFIC_KNOWN_USERS", "").split(",")
     if "=" in item
     for ip, label in [item.split("=", 1)]
     if ip.strip() and label.strip()
@@ -339,8 +338,20 @@ def _is_local_url(url: str) -> bool:
 
 
 def validate_runtime_config() -> None:
-    if JWT_SECRET == DEFAULT_JWT_SECRET and not _is_local_url(BASE_URL):
-        raise RuntimeError("JWT_SECRET_KEY must be set in production.")
+    missing = [
+        name
+        for name, value in (
+            ("JWT_SECRET_KEY", JWT_SECRET),
+            ("BOT_COMM_PASSWORD", BOT_COMM_PASSWORD),
+        )
+        if not value
+    ]
+    if missing:
+        raise RuntimeError(
+            "Refusing to start. Required secret(s) not set: "
+            + ", ".join(missing)
+            + ". Set them in the environment or a local .env file. .env.example lists names only."
+        )
     if not _is_local_url(BASE_URL):
         if not PAYMENT_WALLET:
             raise RuntimeError("PAYMENT_WALLET must be set in production.")
@@ -1936,12 +1947,12 @@ async def fulfill_paid_tier(
 def get_family_users() -> dict[str, dict]:
     return {
         "justin": {
-            "display_name": "Justin",
+            "display_name": os.getenv("FAMILY_JUSTIN_DISPLAY_NAME", "justin").strip() or "justin",
             "passcode": os.getenv("FAMILY_JUSTIN_PASSCODE", ""),
             "role": "co-steward",
         },
         "nicole": {
-            "display_name": "Nicole",
+            "display_name": os.getenv("FAMILY_NICOLE_DISPLAY_NAME", "nicole").strip() or "nicole",
             "passcode": os.getenv("FAMILY_NICOLE_PASSCODE", ""),
             "role": "co-steward",
         },
@@ -4560,12 +4571,22 @@ async def family_login_page(request: Request):
     except HTTPException:
         pass
 
+    family_users = [
+        {
+            "username": username,
+            "display_name": user["display_name"],
+            "role": user["role"],
+        }
+        for username, user in get_family_users().items()
+        if user.get("passcode")
+    ]
     return templates.TemplateResponse(
         request,
         "family_login.html",
         {
             "product_name": FAMILY_PRODUCT_NAME,
             "household_name": FAMILY_HOUSEHOLD_NAME,
+            "family_users": family_users,
         },
     )
 
@@ -4859,68 +4880,24 @@ AGENT_INCOME_AUTONOMOUS_LOW_VALUE_JOB_POLICY = {
 }
 
 
-AGENT_OUTREACH_TARGETS = [
-    {
-        "target": "Wilhelmsen Port Services Houston",
-        "fit": "Ship agency and port services across Houston/Gulf Coast",
-        "contact": "wps.houston@wilhelmsen.com",
-        "source": "workspace_target_tracker",
-    },
-    {
-        "target": "Wilhelmsen Port Services NAM Gulf Coast",
-        "fit": "Husbandry and port-services workflows",
-        "contact": "wps.nam.husbandry@wilhelmsen.com",
-        "source": "workspace_target_tracker",
-    },
-    {
-        "target": "International Tanker Management Texas",
-        "fit": "Oil and chemical tanker ship management",
-        "contact": "itm.houston@tankermanager.com",
-        "source": "workspace_target_tracker",
-    },
-    {
-        "target": "MOL Chemical Tankers America",
-        "fit": "Houston chemical tanker operations/contact office",
-        "contact": "contact_form",
-        "source": "workspace_target_tracker",
-    },
-    {
-        "target": "NobelSeas Shipping",
-        "fit": "Specialized liquid cargo shipping with Houston presence",
-        "contact": "contact_form",
-        "source": "workspace_target_tracker",
-    },
-    {
-        "target": "Teekay Houston",
-        "fit": "Tanker commercial operations and ship-to-ship services",
-        "contact": "office_contact_path",
-        "source": "workspace_target_tracker",
-    },
-    {
-        "target": "Ameritank",
-        "fit": "Houston Ship Channel barge storage/fleeting coordination",
-        "contact": "website_contact_path",
-        "source": "workspace_target_tracker",
-    },
-    {
-        "target": "Port of Galveston / Galveston Wharves",
-        "fit": "Port operations relationship target",
-        "contact": "website_contact_path",
-        "source": "workspace_target_tracker",
-    },
-    {
-        "target": "Texas International Terminals",
-        "fit": "Terminal/logistics operations",
-        "contact": "website_contact_path",
-        "source": "workspace_target_tracker",
-    },
-    {
-        "target": "Maersk Tankers Houston",
-        "fit": "Tanker office/contact path",
-        "contact": "website_contact_path",
-        "source": "workspace_target_tracker",
-    },
-]
+def _load_agent_outreach_targets() -> list[dict]:
+    raw = os.getenv("AGENT_OUTREACH_TARGETS", "").strip()
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(
+            "AGENT_OUTREACH_TARGETS must be a JSON array of objects. Refusing to start."
+        ) from exc
+    if not isinstance(parsed, list) or any(not isinstance(item, dict) for item in parsed):
+        raise RuntimeError(
+            "AGENT_OUTREACH_TARGETS must be a JSON array of objects. Refusing to start."
+        )
+    return parsed
+
+
+AGENT_OUTREACH_TARGETS = _load_agent_outreach_targets()
 
 
 AGENT_BOT_SERVICES = [
@@ -11429,7 +11406,7 @@ async def bot_comm_login(
     password: str = Form(...),
     next_path: str = Form("/bot-comm"),
 ):
-    if not secrets.compare_digest(password, BOT_COMM_PASSWORD):
+    if not BOT_COMM_PASSWORD or not secrets.compare_digest(password, BOT_COMM_PASSWORD):
         return _bot_comm_login_html(request=request, error="Incorrect password.", next_path=next_path)
 
     response = RedirectResponse(url=_bot_comm_safe_next(next_path), status_code=303)

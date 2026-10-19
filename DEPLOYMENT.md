@@ -27,6 +27,7 @@ Set secrets with stdin so they do not land in shell history:
 
 ```bash
 openssl rand -hex 32 | railway variable set JWT_SECRET_KEY --stdin --skip-deploys
+openssl rand -base64 24 | railway variable set BOT_COMM_PASSWORD --stdin --skip-deploys
 printf '%s' 'sk_live_...' | railway variable set STRIPE_SECRET_KEY --stdin --skip-deploys
 printf '%s' 'whsec_...' | railway variable set STRIPE_WEBHOOK_SECRET --stdin --skip-deploys
 printf '%s' '0x...' | railway variable set PAYMENT_WALLET --stdin --skip-deploys
