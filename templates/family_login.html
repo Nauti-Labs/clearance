@@ -239,22 +239,22 @@
                 <img class="logo" src="/static/harbor-mark.svg" alt="{{ product_name }} logo">
                 {{ product_name }}
             </div>
-            <h1>{{ household_name }} money command center.</h1>
+            <h1>{{ household_name }}</h1>
             <p class="lede">
-                Shared visibility, human approvals before any release, and one clean place for Justin and Nicole to watch balances, due dates, subscriptions, debt payoff momentum, and red-flag alerts.
+                Shared visibility, with a human approval step before any release.
             </p>
             <div class="points">
                 <div class="point">
                     <strong>Guardrails First</strong>
-                    Bill releases stay blocked until a real human approves them on screen.
+                    Releases stay blocked until a person approves them on screen.
                 </div>
                 <div class="point">
-                    <strong>Live Sync Ready</strong>
-                    Other local agents can push bank, debt, score, and subscription snapshots straight into the dashboard.
+                    <strong>Sync Ready</strong>
+                    A local agent can push account snapshots into the dashboard.
                 </div>
                 <div class="point">
-                    <strong>Family Simple</strong>
-                    One passcode per spouse, one dashboard, no hunting through apps to understand the money picture.
+                    <strong>One Screen</strong>
+                    One passcode per operator and one dashboard.
                 </div>
             </div>
         </section>
@@ -264,29 +264,29 @@
             <p class="subcopy">Choose who is logging in, enter the household passcode, and the dashboard stays fast after that.</p>
 
             <div class="who-grid">
-                <button class="who-btn active" type="button" data-user="justin">
-                    Justin
-                    <span>Operations and approvals</span>
+                {% for user in ledger_users %}
+                <button class="who-btn{% if loop.first %} active{% endif %}" type="button" data-user="{{ user.username }}">
+                    {{ user.display_name }}
+                    <span>{{ user.role }}</span>
                 </button>
-                <button class="who-btn" type="button" data-user="nicole">
-                    Nicole
-                    <span>Co-pilot and approvals</span>
-                </button>
+                {% else %}
+                <p>Ledger access is not configured. Set LEDGER_USERS_JSON before use.</p>
+                {% endfor %}
             </div>
 
             <label for="passcode">Passcode</label>
-            <input id="passcode" type="password" placeholder="Family passcode" autocomplete="current-password">
+            <input id="passcode" type="password" placeholder="Passcode" autocomplete="current-password">
             <button class="cta" id="login-btn" type="button">Open dashboard</button>
             <div class="notice" id="notice"></div>
 
             <div class="footer">
-                Login stays on this machine with a signed session cookie. Before real family use, set `FAMILY_JUSTIN_PASSCODE`, `FAMILY_NICOLE_PASSCODE`, and `FAMILY_SYNC_TOKEN`.
+                Login stays on this machine with a signed session cookie. Set LEDGER_USERS_JSON and LEDGER_SYNC_TOKEN before use.
             </div>
         </section>
     </div>
 
     <script>
-        let selectedUser = 'justin';
+        let selectedUser = {{ (ledger_users[0].username if ledger_users else '') | tojson }};
         const notice = document.getElementById('notice');
         const passcodeInput = document.getElementById('passcode');
 

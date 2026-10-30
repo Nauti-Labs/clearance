@@ -76,6 +76,6 @@
 
   <!-- Bottom-right: URL -->
   <g transform="translate(1120, 540)">
-    <text text-anchor="end" font-family="Menlo, 'Courier New', monospace" font-size="16" font-weight="500" fill="#b8b8c0">clearance.nauti-labs.com</text>
+    <text text-anchor="end" font-family="Menlo, 'Courier New', monospace" font-size="16" font-weight="500" fill="#b8b8c0">your-public-host</text>
   </g>
 </svg>

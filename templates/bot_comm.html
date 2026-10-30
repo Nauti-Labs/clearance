@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Bot-Comm</title>
+    <style>
+        body { margin: 0; font: 16px/1.5 system-ui, sans-serif; background: #101116; color: #f7f8fb; }
+        main { width: min(720px, calc(100% - 32px)); margin: 40px auto; }
+        a { color: #e8912d; }
+    </style>
+</head>
+<body>
+    <!-- TODO: the original Bot-Comm operator page was not in this checkout. -->
+    <main>
+        <h1>Bot-Comm</h1>
+        <p>Signed in as {{ viewer.display_name }}.</p>
+        <p>Operator state is available at <a href="{{ base_url }}/bot-comm/api/state">/bot-comm/api/state</a>.</p>
+        <p><a href="{{ base_url }}/bot-comm/market">Public market</a></p>
+    </main>
+</body>
+</html>

@@ -45,10 +45,7 @@ except ImportError:  # pragma: no cover - optional until wallet verification dep
     Account = None
     encode_defunct = None
 
-try:
-    from jose import jwt, JWTError
-except ImportError:  # pragma: no cover - exercised in local fallback runtime
-    from jwt_compat import jwt, JWTError
+from jwt_compat import jwt, JWTError
 
 from database import init_db, get_db
 from crypto_verify import verify_usdc_payment
@@ -94,8 +91,7 @@ from sms_service import (
 
 load_dotenv()
 
-DEFAULT_JWT_SECRET = "dev-secret-change-in-production"
-JWT_SECRET = os.getenv("JWT_SECRET_KEY", DEFAULT_JWT_SECRET)
+JWT_SECRET = os.getenv("JWT_SECRET_KEY", "").strip()
 JWT_ALGORITHM = "HS256"
 BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
 SCRAM_BASE_URL = os.getenv("SCRAM_BASE_URL", os.getenv("PUBLIC_SCRAM_URL", f"{BASE_URL.rstrip('/')}/scram")).rstrip("/")
@@ -182,9 +178,10 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 TELEGRAM_WEBHOOK_SECRET = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
 FAMILY_SESSION_COOKIE = os.getenv("FAMILY_SESSION_COOKIE", "clearance_family_session")
 FAMILY_SESSION_HOURS = int(os.getenv("FAMILY_SESSION_HOURS", "18"))
-FAMILY_SYNC_TOKEN = os.getenv("FAMILY_SYNC_TOKEN", "")
-FAMILY_PRODUCT_NAME = os.getenv("FAMILY_PRODUCT_NAME", "Harbor Ledger")
-FAMILY_HOUSEHOLD_NAME = os.getenv("FAMILY_HOUSEHOLD_NAME", "LeBlanc Family")
+FAMILY_SYNC_TOKEN = os.getenv("LEDGER_SYNC_TOKEN", os.getenv("FAMILY_SYNC_TOKEN", "")).strip()
+FAMILY_PRODUCT_NAME = os.getenv("LEDGER_PRODUCT_NAME", os.getenv("FAMILY_PRODUCT_NAME", "Harbor Ledger")).strip() or "Harbor Ledger"
+FAMILY_HOUSEHOLD_NAME = os.getenv("LEDGER_DISPLAY_NAME", os.getenv("FAMILY_HOUSEHOLD_NAME", "Workspace")).strip() or "Workspace"
+LEDGER_TOOLS_ENABLED = os.getenv("LEDGER_TOOLS_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
 AGENT_INCOME_PASSWORD = os.getenv("AGENT_INCOME_PASSWORD", "")
 AGENT_INCOME_SESSION_COOKIE = os.getenv("AGENT_INCOME_SESSION_COOKIE", "clearance_agent_income_session")
 AGENT_INCOME_SESSION_HOURS = int(os.getenv("AGENT_INCOME_SESSION_HOURS", "12"))
@@ -233,13 +230,14 @@ AGENT_INCOME_PAYANAGENT_API_KEY = os.getenv(
     os.getenv("PAYANAGENT_API_KEY", ""),
 ).strip()
 AGENT_INCOME_PAYANAGENT_AGENT_ID = os.getenv("AGENT_INCOME_PAYANAGENT_AGENT_ID", "").strip()
-BOT_COMM_PASSWORD = os.getenv("BOT_COMM_PASSWORD", "Restio2027&")
-TRAFFIC_BOARD_PASSWORD = os.getenv("TRAFFIC_BOARD_PASSWORD", BOT_COMM_PASSWORD)
+BOT_COMM_PASSWORD = os.getenv("BOT_COMM_PASSWORD", "").strip()
+TRAFFIC_BOARD_PASSWORD = os.getenv("TRAFFIC_BOARD_PASSWORD", "").strip() or BOT_COMM_PASSWORD
 TRAFFIC_IP_CACHE_PATH = Path(os.getenv("CLEARANCE_TRAFFIC_IP_CACHE_PATH", "data/traffic_ip_cache.json"))
 TRAFFIC_IP_ENRICH = os.getenv("CLEARANCE_TRAFFIC_IP_ENRICH", "1").lower() not in {"0", "false", "no"}
+IP_LOOKUP_BASE_URL = os.getenv("IP_LOOKUP_BASE_URL", "http://ip-api.com").rstrip("/")
 TRAFFIC_KNOWN_USERS = {
     ip.strip(): label.strip()
-    for item in os.getenv("TRAFFIC_KNOWN_USERS", "47.161.205.86=Justin / Nauti-Labs owner").split(",")
+    for item in os.getenv("TRAFFIC_KNOWN_USERS", "").split(",")
     if "=" in item
     for ip, label in [item.split("=", 1)]
     if ip.strip() and label.strip()
@@ -249,12 +247,26 @@ BOT_COMM_SESSION_HOURS = int(os.getenv("BOT_COMM_SESSION_HOURS", "12"))
 BOT_COMM_DAILY_TARGET_USDC = float(os.getenv("BOT_COMM_DAILY_TARGET_USDC", "200"))
 BOT_COMM_WALLET = os.getenv("BOT_COMM_WALLET", AGENT_INCOME_DEFAULT_WALLET or PAYMENT_WALLET).strip()
 BOT_COMM_CONTACT_EMAIL = os.getenv("BOT_COMM_CONTACT_EMAIL", PAYMENT_SUPPORT_EMAIL)
+def _default_cors_origins() -> str:
+    origins: list[str] = []
+    brand = BRAND_URL.rstrip("/")
+    if brand:
+        origins.append(brand)
+    parsed = urlparse(brand if "://" in brand else f"https://{brand}")
+    host = parsed.hostname or ""
+    if host and not host.startswith("www.") and parsed.scheme:
+        origins.append(f"{parsed.scheme}://www.{host}")
+    local = os.getenv(
+        "LOCAL_DEV_ORIGINS",
+        "http://localhost:8080,http://localhost:8081,http://127.0.0.1:8080,http://127.0.0.1:8081",
+    )
+    origins.extend(item.strip() for item in local.split(",") if item.strip())
+    return ",".join(origins)
+
+
 BOT_COMM_CORS_ORIGINS = [
     origin.strip().rstrip("/")
-    for origin in os.getenv(
-        "BOT_COMM_CORS_ORIGINS",
-        "https://nauti-labs.com,https://www.nauti-labs.com,http://localhost:8080,http://localhost:8081,http://127.0.0.1:8080,http://127.0.0.1:8081",
-    ).split(",")
+    for origin in os.getenv("BOT_COMM_CORS_ORIGINS", _default_cors_origins()).split(",")
     if origin.strip()
 ]
 BOT_COMM_402INDEX_VERIFY_HASH = os.getenv(
@@ -338,9 +350,48 @@ def _is_local_url(url: str) -> bool:
     return url.startswith("http://localhost") or url.startswith("http://127.0.0.1")
 
 
+def load_ledger_users() -> dict[str, dict]:
+    """Operators for the optional private ledger. Empty unless LEDGER_USERS_JSON is set."""
+    raw = os.getenv("LEDGER_USERS_JSON", "").strip()
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("LEDGER_USERS_JSON must be a JSON array of user objects. Refusing to start.") from exc
+    if not isinstance(parsed, list) or any(not isinstance(item, dict) for item in parsed):
+        raise RuntimeError("LEDGER_USERS_JSON must be a JSON array of user objects. Refusing to start.")
+    users: dict[str, dict] = {}
+    for item in parsed:
+        username = str(item.get("username") or "").strip().lower()
+        passcode = str(item.get("passcode") or "")
+        if not username or not passcode:
+            continue
+        users[username] = {
+            "display_name": str(item.get("display_name") or username).strip() or username,
+            "passcode": passcode,
+            "role": str(item.get("role") or "operator").strip() or "operator",
+        }
+    return users
+
+
 def validate_runtime_config() -> None:
-    if JWT_SECRET == DEFAULT_JWT_SECRET and not _is_local_url(BASE_URL):
-        raise RuntimeError("JWT_SECRET_KEY must be set in production.")
+    missing = [
+        name
+        for name, value in (
+            ("JWT_SECRET_KEY", JWT_SECRET),
+            ("BOT_COMM_PASSWORD", BOT_COMM_PASSWORD),
+        )
+        if not value
+    ]
+    if missing:
+        raise RuntimeError(
+            "Refusing to start. Required secret(s) not set: "
+            + ", ".join(missing)
+            + ". Set them in the environment or a local .env file. .env.example lists names only."
+        )
+    if LEDGER_TOOLS_ENABLED:
+        load_ledger_users()
     if not _is_local_url(BASE_URL):
         if not PAYMENT_WALLET:
             raise RuntimeError("PAYMENT_WALLET must be set in production.")
@@ -400,6 +451,14 @@ app.add_middleware(
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
+
+
+@app.middleware("http")
+async def hide_private_ledger(request: Request, call_next):
+    path = request.url.path
+    if not LEDGER_TOOLS_ENABLED and (path == "/family" or path.startswith("/family/")):
+        return JSONResponse(status_code=404, content={"detail": "Not Found"})
+    return await call_next(request)
 
 
 # --- Engagement / Ambassador attribution ---
@@ -577,7 +636,7 @@ async def _traffic_fetch_ip_profile(ip: str, client: httpx.AsyncClient) -> dict:
         return {}
     fields = "status,message,country,regionName,city,isp,org,as,mobile,proxy,hosting,query"
     try:
-        response = await client.get(f"http://ip-api.com/json/{quote(ip)}", params={"fields": fields})
+        response = await client.get(f"{IP_LOOKUP_BASE_URL}/json/{quote(ip)}", params={"fields": fields})
         response.raise_for_status()
         profile = response.json()
     except Exception:
@@ -1137,10 +1196,28 @@ def _request_host(request: Request) -> str:
     return (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").split(":")[0].lower()
 
 
+def _base_host() -> str:
+    try:
+        return (urlparse(BASE_URL).hostname or "").lower()
+    except Exception:
+        return ""
+
+
 def _is_scram_request(request: Request) -> bool:
+    """True only for a dedicated scam-check hostname.
+
+    SCRAM_BASE_URL defaults to BASE_URL + /scram, which shares the app host.
+    That path is not a separate site, so it must not replace the approval homepage.
+    """
     host = _request_host(request)
     configured = _scram_host()
-    return bool(host and (host == configured or host.startswith("scram.")))
+    if not host:
+        return False
+    if host.startswith("scram."):
+        return True
+    if not configured or configured == _base_host():
+        return False
+    return host == configured
 
 
 def _scram_home_href(request: Request) -> str:
@@ -1934,18 +2011,7 @@ async def fulfill_paid_tier(
 
 
 def get_family_users() -> dict[str, dict]:
-    return {
-        "justin": {
-            "display_name": "Justin",
-            "passcode": os.getenv("FAMILY_JUSTIN_PASSCODE", ""),
-            "role": "co-steward",
-        },
-        "nicole": {
-            "display_name": "Nicole",
-            "passcode": os.getenv("FAMILY_NICOLE_PASSCODE", ""),
-            "role": "co-steward",
-        },
-    }
+    return load_ledger_users()
 
 
 def _family_session_expiry() -> str:
@@ -3181,9 +3247,8 @@ async def _handle_telegram_start_message(message: dict) -> dict:
         {
             "chat_id": chat_id,
             "text": (
-                "Felipe x Clearance is live. Captain has your start ping. "
-                "Use the Felipe link and your beta key to create your account. "
-                "Never send seed phrases, private keys, exchange passwords, or recovery codes here."
+                "Clearance is live. Use your approval link and API key to continue. "
+                "Do not send seed phrases, private keys, or account passwords here."
             ),
             "disable_web_page_preview": True,
         },
@@ -3191,7 +3256,7 @@ async def _handle_telegram_start_message(message: dict) -> dict:
 
     if TELEGRAM_CHAT_ID and str(chat_id) != str(TELEGRAM_CHAT_ID):
         lines = [
-            "Felipe x Clearance /start",
+            "Clearance /start",
             f"From: {actor}",
             f"Telegram user id: {actor_id or 'unknown'}",
             f"Chat id: {chat_id}",
@@ -3646,7 +3711,7 @@ async def scram_imessage_inbound(request: Request):
 async def ambassador_redirect(ambassador: str, request: Request):
     """Pretty ambassador URL — sets ref cookie and 302s to landing.
 
-    Usage: send ambassadors links like https://clearance.nauti-labs.com/r/alice
+    Usage: links look like <BASE_URL>/r/<ref>, where BASE_URL is the public origin.
     """
     ref = await canonical_traffic_ref(ambassador)
     if not ref:
@@ -4560,12 +4625,21 @@ async def family_login_page(request: Request):
     except HTTPException:
         pass
 
+    ledger_users = [
+        {
+            "username": username,
+            "display_name": user["display_name"],
+            "role": user["role"],
+        }
+        for username, user in get_family_users().items()
+    ]
     return templates.TemplateResponse(
         request,
         "family_login.html",
         {
             "product_name": FAMILY_PRODUCT_NAME,
             "household_name": FAMILY_HOUSEHOLD_NAME,
+            "ledger_users": ledger_users,
         },
     )
 
@@ -4859,68 +4933,24 @@ AGENT_INCOME_AUTONOMOUS_LOW_VALUE_JOB_POLICY = {
 }
 
 
-AGENT_OUTREACH_TARGETS = [
-    {
-        "target": "Wilhelmsen Port Services Houston",
-        "fit": "Ship agency and port services across Houston/Gulf Coast",
-        "contact": "wps.houston@wilhelmsen.com",
-        "source": "workspace_target_tracker",
-    },
-    {
-        "target": "Wilhelmsen Port Services NAM Gulf Coast",
-        "fit": "Husbandry and port-services workflows",
-        "contact": "wps.nam.husbandry@wilhelmsen.com",
-        "source": "workspace_target_tracker",
-    },
-    {
-        "target": "International Tanker Management Texas",
-        "fit": "Oil and chemical tanker ship management",
-        "contact": "itm.houston@tankermanager.com",
-        "source": "workspace_target_tracker",
-    },
-    {
-        "target": "MOL Chemical Tankers America",
-        "fit": "Houston chemical tanker operations/contact office",
-        "contact": "contact_form",
-        "source": "workspace_target_tracker",
-    },
-    {
-        "target": "NobelSeas Shipping",
-        "fit": "Specialized liquid cargo shipping with Houston presence",
-        "contact": "contact_form",
-        "source": "workspace_target_tracker",
-    },
-    {
-        "target": "Teekay Houston",
-        "fit": "Tanker commercial operations and ship-to-ship services",
-        "contact": "office_contact_path",
-        "source": "workspace_target_tracker",
-    },
-    {
-        "target": "Ameritank",
-        "fit": "Houston Ship Channel barge storage/fleeting coordination",
-        "contact": "website_contact_path",
-        "source": "workspace_target_tracker",
-    },
-    {
-        "target": "Port of Galveston / Galveston Wharves",
-        "fit": "Port operations relationship target",
-        "contact": "website_contact_path",
-        "source": "workspace_target_tracker",
-    },
-    {
-        "target": "Texas International Terminals",
-        "fit": "Terminal/logistics operations",
-        "contact": "website_contact_path",
-        "source": "workspace_target_tracker",
-    },
-    {
-        "target": "Maersk Tankers Houston",
-        "fit": "Tanker office/contact path",
-        "contact": "website_contact_path",
-        "source": "workspace_target_tracker",
-    },
-]
+def _load_agent_outreach_targets() -> list[dict]:
+    raw = os.getenv("AGENT_OUTREACH_TARGETS", "").strip()
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(
+            "AGENT_OUTREACH_TARGETS must be a JSON array of objects. Refusing to start."
+        ) from exc
+    if not isinstance(parsed, list) or any(not isinstance(item, dict) for item in parsed):
+        raise RuntimeError(
+            "AGENT_OUTREACH_TARGETS must be a JSON array of objects. Refusing to start."
+        )
+    return parsed
+
+
+AGENT_OUTREACH_TARGETS = _load_agent_outreach_targets()
 
 
 AGENT_BOT_SERVICES = [
@@ -5209,21 +5239,21 @@ AGENT_INCOME_MARKETPLACE_LISTINGS = [
                 "id": "4c9a6539-7458-46d4-8a31-2ddfaa785b49",
                 "name": "Agent Income Readiness Audit",
                 "price_usd": 49,
-                "endpoint": "https://clearance.nauti-labs.com/agent-income/audit",
+                "endpoint": f"{BASE_URL.rstrip('/')}/agent-income/audit",
                 "health_status": "healthy",
             },
             {
                 "id": "2d336624-918a-46e4-a5ba-787ae798fa4f",
                 "name": "Agent Income Payment Flow Review",
                 "price_usd": 199,
-                "endpoint": "https://clearance.nauti-labs.com/agent-income/review",
+                "endpoint": f"{BASE_URL.rstrip('/')}/agent-income/review",
                 "health_status": "healthy",
             },
             {
                 "id": "2de3cc11-2b86-420a-b12e-b24bf7e264de",
                 "name": "Agent Income Integration Blueprint",
                 "price_usd": 499,
-                "endpoint": "https://clearance.nauti-labs.com/agent-income/blueprint",
+                "endpoint": f"{BASE_URL.rstrip('/')}/agent-income/blueprint",
                 "health_status": "healthy",
             },
         ],
@@ -5239,21 +5269,21 @@ AGENT_INCOME_MARKETPLACE_LISTINGS = [
                 "id": "js78n0mjwpbtfqkdhm970cbxgn86bstt",
                 "name": "Agent Income Readiness Audit",
                 "price_usd": 49,
-                "endpoint": "https://clearance.nauti-labs.com/agent-income/audit",
+                "endpoint": f"{BASE_URL.rstrip('/')}/agent-income/audit",
                 "health_status": "active",
             },
             {
                 "id": "js73d9jtc28yv5z5pbbqp5dc3x86a3aw",
                 "name": "Agent Income Payment Flow Review",
                 "price_usd": 199,
-                "endpoint": "https://clearance.nauti-labs.com/agent-income/review",
+                "endpoint": f"{BASE_URL.rstrip('/')}/agent-income/review",
                 "health_status": "active",
             },
             {
                 "id": "js70xsdargccpdypv1avaywpyn86bmny",
                 "name": "Agent Income Integration Blueprint",
                 "price_usd": 499,
-                "endpoint": "https://clearance.nauti-labs.com/agent-income/blueprint",
+                "endpoint": f"{BASE_URL.rstrip('/')}/agent-income/blueprint",
                 "health_status": "active",
             },
         ],
@@ -11429,7 +11459,7 @@ async def bot_comm_login(
     password: str = Form(...),
     next_path: str = Form("/bot-comm"),
 ):
-    if not secrets.compare_digest(password, BOT_COMM_PASSWORD):
+    if not BOT_COMM_PASSWORD or not secrets.compare_digest(password, BOT_COMM_PASSWORD):
         return _bot_comm_login_html(request=request, error="Incorrect password.", next_path=next_path)
 
     response = RedirectResponse(url=_bot_comm_safe_next(next_path), status_code=303)
@@ -12605,7 +12635,7 @@ def _agent_income_paid_offer_html(offer: dict) -> str:
         }}
         window.location.href = body.checkout_url;
       }} catch (error) {{
-        status.textContent = 'Unable to start card checkout. Try the USDC payment path or email consulting@nauti-labs.com.';
+        status.textContent = 'Unable to start card checkout. Try the USDC payment path or email ' + {json.dumps(PAYMENT_SUPPORT_EMAIL)} + '.';
       }}
     }});
   </script>
@@ -14989,7 +15019,7 @@ async def scram_readiness():
     if not twilio_auth_configured:
         blockers.append("Set TWILIO_AUTH_TOKEN.")
     if not public_https_base:
-        blockers.append("Set SCRAM_BASE_URL to https://scram.nauti-labs.com.")
+        blockers.append("Set SCRAM_BASE_URL to a public https origin.")
     blockers.append(
         "Confirm short code 72726 is provisioned in Twilio and its inbound webhook points to /v1/sms/inbound."
     )
@@ -15048,7 +15078,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
         "app:app",
-        host="0.0.0.0",
+        host=os.getenv("HOST", "0.0.0.0"),
         port=int(os.getenv("PORT", "8000")),
         reload=os.getenv("RELOAD", "0") == "1",
     )

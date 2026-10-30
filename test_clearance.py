@@ -1,4 +1,5 @@
 import importlib
+import json
 import os
 import tempfile
 import unittest
@@ -14,12 +15,34 @@ class ClearanceSmokeTests(unittest.TestCase):
         self.db_path = os.path.join(self.temp_dir.name, "clearance-test.db")
 
         os.environ["DB_PATH"] = self.db_path
-        os.environ["JWT_SECRET_KEY"] = "test-secret-not-for-production"
+        os.environ["JWT_SECRET_KEY"] = "test-secret-not-for-production-0123456789"
+        os.environ["BOT_COMM_PASSWORD"] = "test-bot-comm-password"
+        os.environ.pop("TRAFFIC_BOARD_PASSWORD", None)
+        os.environ.pop("TRAFFIC_KNOWN_USERS", None)
+        os.environ.pop("AGENT_OUTREACH_TARGETS", None)
+        os.environ["LEDGER_TOOLS_ENABLED"] = "true"
+        os.environ["LEDGER_USERS_JSON"] = json.dumps([
+            {
+                "username": "ada_operator",
+                "display_name": "Ada Operator",
+                "passcode": "test-pass-ada",
+                "role": "operator",
+            },
+            {
+                "username": "ben_operator",
+                "display_name": "Ben Operator",
+                "passcode": "test-pass-ben",
+                "role": "operator",
+            },
+        ])
+        os.environ.pop("FAMILY_HOUSEHOLD_NAME", None)
+        os.environ.pop("FAMILY_JUSTIN_PASSCODE", None)
+        os.environ.pop("FAMILY_NICOLE_PASSCODE", None)
         os.environ["BASE_URL"] = "http://localhost:8000"
         os.environ["TOKEN_ISSUER"] = "http://localhost:8000"
         os.environ["BRAND_URL"] = "https://nauti-labs.com"
-        os.environ["PAYMENT_WALLET"] = "0x369301753a2372304ba4e159bab852339d760989"
-        os.environ["PAYMENT_ENS"] = "spacegravy.base.eth"
+        os.environ["PAYMENT_WALLET"] = "0x0000000000000000000000000000000000000001"
+        os.environ["PAYMENT_ENS"] = "example.base.eth"
         os.environ["USDC_CONTRACT"] = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
         os.environ["PAYMENT_SUPPORT_EMAIL"] = "consulting@nauti-labs.com"
         os.environ["ADMIN_EMAIL"] = "consulting@nauti-labs.com"
@@ -42,8 +65,6 @@ class ClearanceSmokeTests(unittest.TestCase):
         os.environ["TELEGRAM_BOT_TOKEN"] = ""
         os.environ["TELEGRAM_CHAT_ID"] = ""
         os.environ["TELEGRAM_WEBHOOK_SECRET"] = ""
-        os.environ["FAMILY_JUSTIN_PASSCODE"] = "nauti-justin"
-        os.environ["FAMILY_NICOLE_PASSCODE"] = "nauti-nicole"
         os.environ["FAMILY_SYNC_TOKEN"] = "sync-secret"
         os.environ["NAUTI_TRAFFIC_ADMIN_PIN"] = "123456"
         os.environ["NAUTI_TRAFFIC_ADMIN_PATH_TOKEN"] = "test_admin_secret_123456"
@@ -56,7 +77,7 @@ class ClearanceSmokeTests(unittest.TestCase):
     def tearDown(self):
         self.temp_dir.cleanup()
 
-    def login_family(self, client: TestClient, username: str = "justin", passcode: str = "nauti-justin"):
+    def login_family(self, client: TestClient, username: str = "ada_operator", passcode: str = "test-pass-ada"):
         response = client.post(
             "/family/api/login",
             json={"username": username, "passcode": passcode},
@@ -86,7 +107,7 @@ class ClearanceSmokeTests(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 503)
-        self.assertIn("Stripe checkout is not configured", response.json()["detail"])
+        self.assertIn("Stripe card checkout is not connected", response.json()["detail"])
 
     def test_nauti_traffic_titlecase_route_serves_dashboard(self):
         with TestClient(self.app_module.app) as client:
@@ -98,10 +119,17 @@ class ClearanceSmokeTests(unittest.TestCase):
 
     def test_landing_page_links_to_tutorial_and_bot_build_request(self):
         with TestClient(self.app_module.app) as client:
-            response = client.get("/")
+            response = client.get("/", headers={"host": "localhost:8000"})
+            scram = client.get("/scram")
+            market = client.get("/bot-comm/market")
 
         self.assertEqual(response.status_code, 200)
         self.assertIn('href="/tutorial"', response.text)
+        self.assertNotIn("scam_check.html", response.text)
+        self.assertEqual(scram.status_code, 200)
+        self.assertIn("SCRAM scam check", scram.text)
+        self.assertEqual(market.status_code, 200)
+        self.assertIn("Bot-Comm market", market.text)
         self.assertIn("Request a trading bot build", response.text)
         self.assertIn("$125/hr", response.text)
         self.assertIn("10-hour minimum", response.text)
@@ -131,7 +159,7 @@ class ClearanceSmokeTests(unittest.TestCase):
             wrong_secret = client.get("/nauti-traffic/admin/wrong_secret_12345")
             wrong_secret_post = client.post(
                 "/nauti-traffic/admin/wrong_secret_12345/affiliate",
-                data={"ref": "bhamzy"},
+                data={"ref": "north_pier"},
                 follow_redirects=False,
             )
             secret_locked = client.get(admin_path)
@@ -148,7 +176,7 @@ class ClearanceSmokeTests(unittest.TestCase):
             unlocked = client.get(admin_path)
             saved = client.post(
                 f"{admin_path}/affiliate",
-                data={"ref": "bhamzy", "badge": "none", "avatar_url": "", "x_handle": "bhamzy"},
+                data={"ref": "north_pier", "badge": "none", "avatar_url": "", "x_handle": "north_pier"},
                 follow_redirects=False,
             )
             captain_saved = client.post(
@@ -158,7 +186,7 @@ class ClearanceSmokeTests(unittest.TestCase):
             )
             alias = client.post(
                 f"{admin_path}/alias",
-                data={"alias": "bhamzi", "target": "bhamzy"},
+                data={"alias": "northpier", "target": "north_pier"},
                 follow_redirects=False,
             )
             hidden = client.post(
@@ -166,8 +194,8 @@ class ClearanceSmokeTests(unittest.TestCase):
                 data={"ref": "telegram", "action": "hide"},
                 follow_redirects=False,
             )
-            pretty_alias = client.get("/r/bhamzi", follow_redirects=False)
-            vanity_alias = client.get("/bhamzi", follow_redirects=False)
+            pretty_alias = client.get("/r/northpier", follow_redirects=False)
+            vanity_alias = client.get("/northpier", follow_redirects=False)
             captain_vanity = client.get("/second_captain", follow_redirects=False)
             unknown_vanity = client.get("/not_configured", follow_redirects=False)
             health = client.get("/health")
@@ -194,24 +222,24 @@ class ClearanceSmokeTests(unittest.TestCase):
         self.assertEqual(alias.status_code, 303)
         self.assertEqual(hidden.status_code, 303)
         self.assertEqual(pretty_alias.status_code, 302)
-        self.assertIn("clearance_ref=bhamzy", pretty_alias.headers.get("set-cookie", ""))
+        self.assertIn("clearance_ref=north_pier", pretty_alias.headers.get("set-cookie", ""))
         self.assertEqual(vanity_alias.status_code, 302)
-        self.assertIn("clearance_ref=bhamzy", vanity_alias.headers.get("set-cookie", ""))
+        self.assertIn("clearance_ref=north_pier", vanity_alias.headers.get("set-cookie", ""))
         self.assertEqual(captain_vanity.status_code, 302)
         self.assertIn("clearance_ref=second_captain", captain_vanity.headers.get("set-cookie", ""))
         self.assertEqual(unknown_vanity.status_code, 404)
         self.assertEqual(health.status_code, 200)
         payload = config.json()
-        self.assertEqual(payload["captain"], "dipson_crypt")
-        self.assertIn("dipson_crypt", payload["captains"])
-        self.assertIn("angela_dubois", payload["captains"])
+        self.assertEqual(payload["captain"], "harbor_captain")
+        self.assertIn("harbor_captain", payload["captains"])
+        self.assertIn("cove_mate", payload["captains"])
         self.assertIn("second_captain", payload["captains"])
-        self.assertEqual(payload["avatar_urls"]["angela_dubois"], "/static/avatars/angela_dubois.png")
-        self.assertNotIn("bhamzy", payload["first_mates"])
+        self.assertEqual(payload["avatar_urls"]["cove_mate"], "/static/logos/stamp.svg")
+        self.assertNotIn("north_pier", payload["first_mates"])
         self.assertLessEqual(len(payload["first_mates"]), 10)
-        self.assertEqual(payload["ref_aliases"]["bhamzi"], "bhamzy")
+        self.assertEqual(payload["ref_aliases"]["northpier"], "north_pier")
         self.assertIn("telegram", payload["hidden_refs"])
-        self.assertEqual(payload["avatar_overrides"]["bhamzy"], "bhamzy")
+        self.assertEqual(payload["avatar_overrides"]["north_pier"], "north_pier")
 
     def test_paid_tier_fulfillment_issues_key_and_is_idempotent(self):
         import asyncio
@@ -280,7 +308,7 @@ class ClearanceSmokeTests(unittest.TestCase):
             with TestClient(self.app_module.app) as client:
                 response = client.post(
                     "/v1/keys",
-                    json={"email": "Builder@Example.com", "name": "Felipe"},
+                    json={"email": "Builder@Example.com", "name": "Casey"},
                 )
 
         self.assertEqual(response.status_code, 200)
@@ -291,7 +319,7 @@ class ClearanceSmokeTests(unittest.TestCase):
         self.assertEqual(admin_call[0], "consulting@nauti-labs.com")
         self.assertIn("New Clearance free signup", admin_call[1])
         self.assertIn("builder@example.com", admin_call[2])
-        self.assertIn("Felipe", admin_call[2])
+        self.assertIn("Casey", admin_call[2])
         self.assertNotIn(raw_key, admin_call[2])
 
         welcome_call = send_email.await_args_list[1].args
@@ -443,7 +471,7 @@ class ClearanceSmokeTests(unittest.TestCase):
                             "source_key": "capital_one",
                             "external_id": "chk1",
                             "institution": "Capital One",
-                            "name": "LeBlanc Checking",
+                            "name": "Northwind Checking",
                             "account_type": "checking",
                             "balance": 4825.42,
                             "available": 4560.11,
@@ -497,7 +525,7 @@ class ClearanceSmokeTests(unittest.TestCase):
                     ],
                     "credit_scores": [
                         {
-                            "person_name": "Nicole",
+                            "person_name": "Casey Rivera",
                             "bureau": "Experian",
                             "score": 702,
                             "source_key": "capital_one",
@@ -530,7 +558,7 @@ class ClearanceSmokeTests(unittest.TestCase):
 
     def test_family_queue_blocks_unknown_payees(self):
         with TestClient(self.app_module.app) as client:
-            self.login_family(client, username="nicole", passcode="nauti-nicole")
+            self.login_family(client, username="ben_operator", passcode="test-pass-ben")
 
             blocked = client.post(
                 "/family/api/actions",
@@ -570,6 +598,35 @@ class ClearanceSmokeTests(unittest.TestCase):
 
         self.assertEqual(decided.status_code, 200)
         self.assertEqual(decided.json()["status"], "approved_for_release")
+
+    def test_health(self):
+        with TestClient(self.app_module.app) as client:
+            response = client.get("/health")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["status"], "operational")
+        self.assertEqual(payload["service"], "clearance")
+
+    def test_startup_rejects_missing_required_secrets(self):
+        os.environ["JWT_SECRET_KEY"] = ""
+        os.environ["BOT_COMM_PASSWORD"] = ""
+        reloaded = importlib.reload(self.app_module)
+        with self.assertRaises(RuntimeError) as caught:
+            with TestClient(reloaded.app):
+                pass
+        message = str(caught.exception)
+        self.assertIn("JWT_SECRET_KEY", message)
+        self.assertIn("BOT_COMM_PASSWORD", message)
+        self.assertIn("Refusing to start", message)
+
+    def test_private_ledger_hidden_unless_enabled(self):
+        os.environ["LEDGER_TOOLS_ENABLED"] = "false"
+        reloaded = importlib.reload(self.app_module)
+        with TestClient(reloaded.app) as client:
+            hidden = client.get("/family/login")
+            health = client.get("/health")
+        self.assertEqual(hidden.status_code, 404)
+        self.assertEqual(health.status_code, 200)
 
 
 if __name__ == "__main__":

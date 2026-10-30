@@ -5,3 +5,4 @@ __pycache__/
 clearance.db
 *.db
 .DS_Store
+screenshots/private/

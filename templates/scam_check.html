@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SCRAM scam check</title>
+    <style>
+        body { margin: 0; font: 16px/1.5 system-ui, sans-serif; background: #101116; color: #f7f8fb; }
+        main { width: min(720px, calc(100% - 32px)); margin: 40px auto; }
+        a { color: #e8912d; }
+        textarea, button { width: 100%; box-sizing: border-box; margin-top: 8px; }
+        textarea { min-height: 140px; }
+        pre { white-space: pre-wrap; background: #17191f; padding: 12px; }
+    </style>
+</head>
+<body>
+    <!-- TODO: the original scam-check page was not in this checkout. This is a minimal stand-in. -->
+    <main>
+        <p>{{ status_label }}</p>
+        <h1>SCRAM scam check</h1>
+        <p>Forward a suspicious message. This build uses a local keyword score. It does not call a model provider.</p>
+        <p>Text code {{ text_code }}{% if sms_number %} · sender {{ sms_number }}{% endif %}</p>
+        <form id="demo">
+            <label for="message">Message</label>
+            <textarea id="message" name="message" placeholder="Paste the message"></textarea>
+            <button type="submit">Check</button>
+        </form>
+        <pre id="result"></pre>
+        <p>Credits: <a href="{{ payment_url }}">{{ payment_url }}</a></p>
+        <p><a href="{{ home_href }}">Home</a> · <a href="mailto:{{ support_email }}">{{ support_email }}</a></p>
+    </main>
+    <script>
+        document.getElementById("demo").addEventListener("submit", async (event) => {
+            event.preventDefault();
+            const message = new FormData(event.target).get("message");
+            const response = await fetch("/v1/scam-check/demo", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ message })
+            });
+            document.getElementById("result").textContent = JSON.stringify(await response.json(), null, 2);
+        });
+    </script>
+</body>
+</html>

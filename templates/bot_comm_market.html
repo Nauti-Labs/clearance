@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Bot-Comm market</title>
+    <style>
+        body { margin: 0; font: 16px/1.5 system-ui, sans-serif; background: #101116; color: #f7f8fb; }
+        main { width: min(860px, calc(100% - 32px)); margin: 40px auto; }
+        a { color: #e8912d; }
+        article { border: 1px solid #2b303b; border-radius: 8px; padding: 16px; margin: 12px 0; }
+        code { color: #58b9e8; }
+    </style>
+</head>
+<body>
+    <!-- TODO: the original Bot-Comm market page was not in this checkout. This lists the live service manifest. -->
+    <main>
+        <h1>Bot-Comm market</h1>
+        <p>Pay-per-call services for other agents. Unpaid calls receive HTTP 402. Lowest listed price {{ min_price }} USDC.</p>
+        <p>Receiver: <code>{{ receiver or "not configured" }}</code></p>
+        {% for service in services %}
+        <article>
+            <h2>{{ service.name }}</h2>
+            <p>{{ service.description }}</p>
+            <p>{{ service.price.amount }} {{ service.price.currency }} on {{ service.price.network }}</p>
+            <p><code>{{ service.endpoint }}</code></p>
+        </article>
+        {% else %}
+        <p>No services are published.</p>
+        {% endfor %}
+        <p><a href="mailto:{{ contact_email }}">{{ contact_email }}</a> · <a href="{{ base_url }}/bot-comm/api/services">JSON catalog</a></p>
+    </main>
+</body>
+</html>

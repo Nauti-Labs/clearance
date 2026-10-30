@@ -991,7 +991,7 @@
             <div class="hero-copy">
                 <div class="hero-eyebrow">
                     <span class="dot"></span>
-                    <span>clearance.nauti-labs.com // human-in-the-loop API</span>
+                    <span>{{ base_url.split('://', 1)[-1] }} // human-in-the-loop API</span>
                 </div>
                 <h1>Stop letting agents move money <span class="accent">you didn't approve.</span></h1>
                 <p class="lede">One API call. The human approves with one tap. Any service verifies the signed token. Built for agents that handle real budgets — not toy demos.</p>
@@ -1401,10 +1401,10 @@ clearance = resp.json()
             if (data.checkout_url) {
                 window.location.href = data.checkout_url;
             } else {
-                alert('Could not start checkout. Please try again or email consulting@nauti-labs.com');
+                alert('Could not start checkout. Please try again or email {{ support_email }}');
             }
         } catch(e) {
-            alert('Checkout unavailable. Please email consulting@nauti-labs.com to complete your purchase.');
+            alert('Checkout unavailable. Please email {{ support_email }} to complete your purchase.');
         }
     }
     function closePayment() {
