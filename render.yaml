@@ -1,0 +1,39 @@
+# Clearance by Nauti-Labs
+# One free web service. Do not add a paid database, disk, worker, or instance here.
+#
+# SQLite on the free plan lives on the ephemeral filesystem and is lost on every
+# restart, deploy, or spin-down. A persistent disk requires a paid plan. After
+# attaching one at /var/data, set DB_PATH=/var/data/clearance.db. The app creates
+# that directory when the process is allowed to.
+
+services:
+  - type: web
+    name: clearance
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
+    healthCheckPath: /health
+    envVars:
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: BOT_COMM_PASSWORD
+        sync: false
+      - key: PAYMENT_WALLET
+        sync: false
+      - key: PAYMENT_CHAIN
+        value: base
+      - key: PAYMENT_CHAIN_ID
+        value: "8453"
+      - key: USDC_CONTRACT
+        value: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+      - key: BASE_RPC_URL
+        value: https://mainnet.base.org
+      - key: AGENT_INCOME_OPERATOR_ENABLED
+        value: "false"
+      - key: AGENT_INCOME_PUBLIC_LEAD_DISCOVERY_ENABLED
+        value: "false"
+      - key: AGENT_INCOME_AUTO_DEAL_LEADS
+        value: "false"
+      - key: DB_PATH
+        value: clearance.db

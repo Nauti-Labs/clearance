@@ -22,7 +22,7 @@ from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from contextlib import asynccontextmanager
 from pathlib import Path
-from urllib.parse import quote, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 import httpx
 from fastapi import FastAPI, HTTPException, Header, Request, Depends, Response, Form
@@ -49,6 +49,7 @@ from jwt_compat import jwt, JWTError
 
 from database import init_db, get_db
 from crypto_verify import verify_usdc_payment
+from x402_facilitator import credentials_configured, decode_payment_header, facilitator_url, verify_and_settle
 from credit_service import (
     add_paid_credits_by_hash,
     get_initial_free_checks,
@@ -94,6 +95,7 @@ load_dotenv()
 JWT_SECRET = os.getenv("JWT_SECRET_KEY", "").strip()
 JWT_ALGORITHM = "HS256"
 BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").strip()
 SCRAM_BASE_URL = os.getenv("SCRAM_BASE_URL", os.getenv("PUBLIC_SCRAM_URL", f"{BASE_URL.rstrip('/')}/scram")).rstrip("/")
 TOKEN_ISSUER = os.getenv("TOKEN_ISSUER", BASE_URL)
 BRAND_URL = os.getenv("BRAND_URL", "https://nauti-labs.com")
@@ -201,19 +203,19 @@ AGENT_INCOME_OUTREACH_REPLY_TO = os.getenv("AGENT_INCOME_OUTREACH_REPLY_TO", PAY
 AGENT_INCOME_COMPANY_ADDRESS = os.getenv("AGENT_INCOME_COMPANY_ADDRESS", "")
 AGENT_INCOME_OPERATOR_ENABLED = os.getenv(
     "AGENT_INCOME_OPERATOR_ENABLED",
-    "false" if BASE_URL.startswith(("http://localhost", "http://127.0.0.1")) else "active",
+    "false",
 ).lower() in {"1", "true", "yes", "active", "on"}
 AGENT_INCOME_OPERATOR_INTERVAL_SECONDS = int(os.getenv("AGENT_INCOME_OPERATOR_INTERVAL_SECONDS", "900"))
 AGENT_INCOME_PUBLIC_LEAD_DISCOVERY_ENABLED = os.getenv(
     "AGENT_INCOME_PUBLIC_LEAD_DISCOVERY_ENABLED",
-    "true",
+    "false",
 ).lower() in {"1", "true", "yes", "active", "on"}
 AGENT_INCOME_PUBLIC_LEAD_LIMIT_PER_QUERY = int(os.getenv("AGENT_INCOME_PUBLIC_LEAD_LIMIT_PER_QUERY", "15"))
 AGENT_INCOME_PUBLIC_LEAD_MAX_RESULTS = int(os.getenv("AGENT_INCOME_PUBLIC_LEAD_MAX_RESULTS", "250"))
 AGENT_INCOME_LEAD_ACTION_LIMIT = int(os.getenv("AGENT_INCOME_LEAD_ACTION_LIMIT", "40"))
 AGENT_INCOME_AUTO_DEAL_LEADS = os.getenv(
     "AGENT_INCOME_AUTO_DEAL_LEADS",
-    "true",
+    "false",
 ).lower() in {"1", "true", "yes", "active", "on"}
 AGENT_INCOME_AUTOSEND_PUBLIC_LEADS = os.getenv(
     "AGENT_INCOME_AUTOSEND_PUBLIC_LEADS",
@@ -231,6 +233,7 @@ AGENT_INCOME_PAYANAGENT_API_KEY = os.getenv(
 ).strip()
 AGENT_INCOME_PAYANAGENT_AGENT_ID = os.getenv("AGENT_INCOME_PAYANAGENT_AGENT_ID", "").strip()
 BOT_COMM_PASSWORD = os.getenv("BOT_COMM_PASSWORD", "").strip()
+ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "").strip()
 TRAFFIC_BOARD_PASSWORD = os.getenv("TRAFFIC_BOARD_PASSWORD", "").strip() or BOT_COMM_PASSWORD
 TRAFFIC_IP_CACHE_PATH = Path(os.getenv("CLEARANCE_TRAFFIC_IP_CACHE_PATH", "data/traffic_ip_cache.json"))
 TRAFFIC_IP_ENRICH = os.getenv("CLEARANCE_TRAFFIC_IP_ENRICH", "1").lower() not in {"0", "false", "no"}
@@ -350,6 +353,24 @@ def _is_local_url(url: str) -> bool:
     return url.startswith("http://localhost") or url.startswith("http://127.0.0.1")
 
 
+def advertised_base_url() -> str:
+    """Public origin for 402 resource URLs and discovery documents.
+
+    PUBLIC_BASE_URL wins. Otherwise BASE_URL is used. Non-local http origins
+    are advertised as https.
+    """
+    configured = (PUBLIC_BASE_URL or BASE_URL or "").strip().rstrip("/")
+    if not configured:
+        configured = "http://localhost:8000"
+    if _is_local_url(configured):
+        return configured
+    if configured.startswith("https://"):
+        return configured
+    if configured.startswith("http://"):
+        return "https://" + configured[len("http://"):]
+    return "https://" + configured.lstrip("/")
+
+
 def load_ledger_users() -> dict[str, dict]:
     """Operators for the optional private ledger. Empty unless LEDGER_USERS_JSON is set."""
     raw = os.getenv("LEDGER_USERS_JSON", "").strip()
@@ -395,10 +416,12 @@ def validate_runtime_config() -> None:
     if not _is_local_url(BASE_URL):
         if not PAYMENT_WALLET:
             raise RuntimeError("PAYMENT_WALLET must be set in production.")
-        if not PAYMENT_ENS:
-            raise RuntimeError("PAYMENT_ENS must be set in production.")
         if not USDC_CONTRACT:
             raise RuntimeError("USDC_CONTRACT must be set in production.")
+        if not advertised_base_url().startswith("https://"):
+            raise RuntimeError(
+                "Resource URLs must use https in production. Set PUBLIC_BASE_URL to an https origin."
+            )
 
     if STRIPE_SECRET_KEY and stripe is None:
         raise RuntimeError("STRIPE_SECRET_KEY is set but the stripe package is not installed.")
@@ -439,8 +462,11 @@ app.add_middleware(
     allow_origins=BOT_COMM_CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type", "X-Payment-Tx", "X-Traffic-Password"],
+    allow_headers=["Content-Type", "X-Payment-Tx", "X-Quote-Id", "PAYMENT-SIGNATURE", "X-PAYMENT", "X-Admin-Token", "X-Traffic-Password"],
     expose_headers=[
+        "PAYMENT-REQUIRED",
+        "PAYMENT-RESPONSE",
+        "X-Payment-Requirements",
         "X-Payment-Required",
         "X-Payment-Network",
         "X-Payment-Currency",
@@ -6673,7 +6699,39 @@ def _agent_bot_service(key: str) -> dict:
     raise HTTPException(status_code=404, detail="Bot service not found")
 
 
+def _hidden_test_offer() -> dict | None:
+    """Optional owner probe. Present only when TEST_PRICE_USD is a positive amount."""
+    raw = os.getenv("TEST_PRICE_USD", "").strip()
+    if not raw:
+        return None
+    try:
+        price = float(raw)
+    except ValueError:
+        return None
+    if price <= 0:
+        return None
+    return {
+        "key": "test_ping",
+        "slug": "test-ping",
+        "label": "Payment test ping",
+        "price_usdc": price,
+        "max_work_seconds": 30,
+        "description": "Hidden payment probe for the service owner. Not listed in discovery.",
+        "path": "/agent-income/test-ping",
+        "hidden": True,
+        "input_schema": {"type": "object", "properties": {"ping": {"type": "string"}}},
+        "output_schema": {"type": "object", "properties": {"pong": {"type": "boolean"}}},
+        "input_example": {"ping": "1"},
+        "output_example": {"pong": True},
+        "refund_terms": "Test payments are not refunded automatically.",
+        "delivery_terms": "Returns a short acknowledgement after verified payment.",
+    }
+
+
 def _agent_income_paid_offer(slug: str) -> dict:
+    hidden = _hidden_test_offer()
+    if hidden and slug in {hidden["slug"], hidden["key"]}:
+        return hidden
     for offer in AGENT_INCOME_PAID_OFFERS:
         if offer["slug"] == slug or offer["key"] == slug:
             return offer
@@ -6701,6 +6759,7 @@ def _agent_income_legacy_x402_requirements(service: dict, resource_url: str, rec
                 "mimeType": "application/json",
                 "maxTimeoutSeconds": 600,
                 "paymentType": "eip3009",
+                "facilitator": facilitator_url(),
                 "extra": {
                     "assetTransferMethod": "eip3009_or_direct_base_usdc",
                     "directBaseTxHeader": "X-Payment-Tx",
@@ -6737,6 +6796,7 @@ def _agent_income_x402_requirements(service: dict, resource_url: str, recipient:
                 "payTo": recipient,
                 "paymentType": "eip3009",
                 "maxTimeoutSeconds": 600,
+                "facilitator": facilitator_url(),
                 "extra": {
                     "name": "USDC",
                     "version": "2",
@@ -6805,8 +6865,31 @@ def _agent_income_x402_requirements(service: dict, resource_url: str, recipient:
     }
 
 
-def _payment_required_response(service: dict, resource_url: str, recipient: str | None, detail: str | None = None) -> JSONResponse:
+def _stamp_quote_on_requirements(requirements: dict, quote: dict | None, resource_url: str) -> dict:
+    if isinstance(requirements.get("resource"), dict):
+        requirements["resource"]["url"] = resource_url
+    for accept in requirements.get("accepts") or []:
+        if isinstance(accept, dict):
+            accept["resource"] = resource_url
+            accept["facilitator"] = facilitator_url()
+            if quote:
+                extra = accept.setdefault("extra", {})
+                extra["quoteId"] = quote["id"]
+                extra["quoteCreatedAt"] = quote["created_at"]
+    return requirements
+
+
+def _payment_required_response(
+    service: dict,
+    resource_url: str,
+    recipient: str | None,
+    detail: str | None = None,
+    quote: dict | None = None,
+) -> JSONResponse:
     requirements = _agent_income_x402_requirements(service, resource_url, recipient)
+    _stamp_quote_on_requirements(requirements, quote, resource_url)
+    legacy = _agent_income_legacy_x402_requirements(service, resource_url, recipient)
+    _stamp_quote_on_requirements(legacy, quote, resource_url)
     encoded = base64.b64encode(json.dumps(requirements, separators=(",", ":")).encode("utf-8")).decode("ascii")
     price = float(service["price_usdc"])
     return JSONResponse(
@@ -6833,7 +6916,19 @@ def _payment_required_response(service: dict, resource_url: str, recipient: str 
                 "currency": "USDC",
             },
             "payment": requirements,
-            "legacy_payment": _agent_income_legacy_x402_requirements(service, resource_url, recipient),
+            "legacy_payment": legacy,
+            "quote_id": quote["id"] if quote else None,
+            "quote": (
+                {
+                    "id": quote["id"],
+                    "created_at": quote["created_at"],
+                    "expires_at": quote.get("expires_at"),
+                    "amount_usd": quote.get("amount"),
+                    "service_id": quote.get("service_id"),
+                }
+                if quote
+                else None
+            ),
             "accepted_payment_methods": ["x402", "USDC on Base"],
             "payment_required_before_work": True,
             "clearance_required": True,
@@ -6847,14 +6942,18 @@ def _payment_required_response(service: dict, resource_url: str, recipient: str 
                 "delivery_terms",
                 "Premium output is delivered only after payment verification.",
             ),
-            "retry": "Send USDC on Base, then retry with X-Payment-Tx or payment_tx set to the Base transaction hash.",
+            "retry": (
+                "Retry with a standard x402 exact payment in the PAYMENT-SIGNATURE header "
+                "(legacy header X-PAYMENT is also accepted), or send USDC on Base and retry "
+                "with X-Payment-Tx or payment_tx plus the quote_id from this response."
+            ),
         },
     )
 
 
 def _agent_income_resource_url(request: Request) -> str:
     query = f"?{request.url.query}" if request.url.query else ""
-    return f"{BASE_URL.rstrip('/')}{request.url.path}{query}"
+    return f"{advertised_base_url()}{request.url.path}{query}"
 
 
 def _bot_service_output(service_key: str, payload: dict) -> dict:
@@ -7033,6 +7132,15 @@ def _agent_income_score_input(payload: dict) -> int:
 def _agent_income_paid_offer_output(offer: dict, payload: dict) -> dict:
     input_text = json.dumps(payload, sort_keys=True)[:6000]
     input_hash = hashlib.sha256(input_text.encode("utf-8")).hexdigest()[:16]
+    if offer.get("key") == "test_ping":
+        return {
+            "service": offer["label"],
+            "pong": True,
+            "generated_at": now_iso(),
+            "input_hash": input_hash,
+            "price_usd": float(offer["price_usdc"]),
+            "license": "Owner payment probe. Not a public offer.",
+        }
     score = _agent_income_score_input(payload)
     project_url = str(payload.get("project_url") or "customer-provided project").strip()
     agent_type = str(payload.get("agent_type") or "unknown").strip()
@@ -7213,6 +7321,348 @@ def _agent_income_paid_offer_output(offer: dict, payload: dict) -> dict:
     return common
 
 
+QUOTE_TTL = timedelta(minutes=30)
+PAID_CALL_EVENT_TYPES = ("paid_offer_payment", "bot_service_payment", "bot_comm_service_payment")
+
+
+def _parse_timestamp(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _resource_with_quote(resource_url: str, quote_id: str) -> str:
+    if not quote_id or "quote_id=" in resource_url:
+        return resource_url
+    joiner = "&" if "?" in resource_url else "?"
+    return f"{resource_url}{joiner}quote_id={quote(quote_id)}"
+
+
+def _paid_service_view(service: dict) -> dict:
+    key = str(service.get("key") or service.get("id") or "")
+    return {
+        **service,
+        "key": key,
+        "label": service.get("label") or service.get("title") or key,
+        "description": service.get("description") or service.get("summary") or "",
+        "price_usdc": float(service["price_usdc"]),
+    }
+
+
+def _x402_payment_header(request: Request) -> str:
+    for name in ("payment-signature", "x-payment"):
+        value = request.headers.get(name)
+        if value and str(value).strip():
+            return str(value).strip()
+    return ""
+
+
+def _quote_id_from_sources(request: Request, explicit: str | None, payment_payload: dict | None = None) -> str:
+    if explicit and str(explicit).strip():
+        return str(explicit).strip()[:160]
+    header = request.headers.get("x-quote-id")
+    if header and str(header).strip():
+        return str(header).strip()[:160]
+    query_quote = request.query_params.get("quote_id")
+    if query_quote:
+        return str(query_quote).strip()[:160]
+    if isinstance(payment_payload, dict):
+        resource = payment_payload.get("resource")
+        url = ""
+        if isinstance(resource, dict):
+            url = str(resource.get("url") or "")
+        elif isinstance(resource, str):
+            url = resource
+        found = parse_qs(urlparse(url).query).get("quote_id")
+        if found and found[0]:
+            return str(found[0]).strip()[:160]
+        accepted = payment_payload.get("accepted") if isinstance(payment_payload.get("accepted"), dict) else {}
+        extra = accepted.get("extra") if isinstance(accepted.get("extra"), dict) else {}
+        if extra.get("quoteId"):
+            return str(extra["quoteId"]).strip()[:160]
+    return ""
+
+
+async def _create_payment_quote(
+    *,
+    product: str,
+    service_id: str,
+    amount: float,
+    recipient: str | None,
+    resource_url: str,
+    quote_id: str | None = None,
+) -> dict:
+    quote_id = quote_id or generate_id("quote")
+    created = datetime.now(timezone.utc)
+    expires = created + QUOTE_TTL
+    record = {
+        "id": quote_id,
+        "product": product,
+        "service_id": service_id,
+        "amount": float(amount),
+        "recipient": recipient,
+        "resource_url": resource_url,
+        "created_at": created.isoformat(),
+        "expires_at": expires.isoformat(),
+        "consumed_tx": None,
+    }
+    db = await get_db()
+    try:
+        await db.execute(
+            """INSERT INTO payment_quotes
+               (id, product, service_id, amount, recipient, resource_url, created_at, expires_at, consumed_tx)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)""",
+            (
+                quote_id,
+                product,
+                service_id,
+                float(amount),
+                recipient,
+                resource_url,
+                record["created_at"],
+                record["expires_at"],
+            ),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+    return record
+
+
+async def _load_payment_quote(db, quote_id: str) -> dict | None:
+    if not quote_id:
+        return None
+    row = await (await db.execute("SELECT * FROM payment_quotes WHERE id = ?", (quote_id,))).fetchone()
+    return dict(row) if row else None
+
+
+def _quote_problem(quote: dict | None, service_id: str) -> str | None:
+    if not quote:
+        return "Unknown quote_id. Request the endpoint again to receive a fresh quote."
+    if str(quote.get("service_id") or "") != service_id:
+        return "quote_id does not match this service."
+    if quote.get("consumed_tx"):
+        return "This quote has already been paid."
+    expires = _parse_timestamp(quote.get("expires_at"))
+    if expires and expires <= datetime.now(timezone.utc):
+        return "This quote has expired. Request the endpoint again to receive a fresh quote."
+    return None
+
+
+async def _payment_tx_consumed(db, tx_hash: str) -> bool:
+    row = await (
+        await db.execute(
+            """SELECT provider_ref AS tx_hash FROM agent_income_ledger
+               WHERE provider = ? AND provider_ref = ?
+               UNION
+               SELECT tx_hash FROM used_payment_txs WHERE tx_hash = ?
+               LIMIT 1""",
+            ("base_usdc", tx_hash, tx_hash),
+        )
+    ).fetchone()
+    return row is not None
+
+
+async def _mark_quote_consumed(db, quote_id: str | None, tx_hash: str) -> None:
+    if not quote_id:
+        return
+    row = await (await db.execute("SELECT consumed_tx FROM payment_quotes WHERE id = ?", (quote_id,))).fetchone()
+    if not row:
+        raise HTTPException(status_code=402, detail="Unknown quote_id. Request the endpoint again to receive a fresh quote.")
+    consumed = row["consumed_tx"]
+    if consumed and consumed != tx_hash:
+        raise HTTPException(status_code=409, detail="This quote has already been paid")
+    if not consumed:
+        await db.execute(
+            "UPDATE payment_quotes SET consumed_tx = ? WHERE id = ? AND consumed_tx IS NULL",
+            (tx_hash, quote_id),
+        )
+
+
+async def _insert_used_payment_tx(
+    db,
+    *,
+    tx_hash: str,
+    service_id: str,
+    quote_id: str | None,
+    payer: str | None,
+    amount: float,
+    product: str,
+) -> None:
+    try:
+        await db.execute(
+            """INSERT INTO used_payment_txs
+               (tx_hash, service_id, quote_id, payer, amount, product, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (tx_hash, service_id, quote_id, payer, float(amount), product, now_iso()),
+        )
+    except Exception as exc:
+        message = str(exc).lower()
+        if "unique" in message or "constraint" in message:
+            raise HTTPException(status_code=409, detail="This payment transaction has already been consumed") from exc
+        raise
+
+
+def _service_requirements(service: dict, resource_url: str, recipient: str | None) -> dict:
+    return _agent_income_x402_requirements(_paid_service_view(service), resource_url, recipient)
+
+
+async def _fresh_quote_for_request(*, product: str, service: dict, recipient: str | None, request: Request) -> dict:
+    view = _paid_service_view(service)
+    quote_id = generate_id("quote")
+    resource = _resource_with_quote(_agent_income_resource_url(request), quote_id)
+    return await _create_payment_quote(
+        product=product,
+        service_id=view["key"],
+        amount=float(view["price_usdc"]),
+        recipient=recipient,
+        resource_url=resource,
+        quote_id=quote_id,
+    )
+
+
+def _payment_response_for(
+    service: dict,
+    recipient: str | None,
+    detail: str | None,
+    quote: dict,
+    style: str,
+    request: Request,
+) -> JSONResponse:
+    resource = quote.get("resource_url") or _resource_with_quote(_agent_income_resource_url(request), quote["id"])
+    if style == "bot-comm":
+        payload = _bot_comm_quote_payload(service, quote["id"], request)
+        payload["endpoint"] = resource
+        return _bot_comm_payment_required_response(service, request, payload, detail, quote)
+    return _payment_required_response(_paid_service_view(service), resource, recipient, detail, quote)
+
+
+async def _collect_service_payment(
+    db,
+    request: Request,
+    *,
+    product: str,
+    service: dict,
+    recipient: str,
+    payment_tx: str,
+    quote_id: str,
+    style: str = "agent-income",
+) -> dict | JSONResponse:
+    """Accept an x402 header or a quote-bound direct Base transfer.
+
+    A JSONResponse is a 402 the caller should return unchanged. HTTP 409 is raised
+    when the transaction was already consumed. On success the quote and tx hash
+    are written on ``db`` and still need the caller's commit.
+    """
+    view = _paid_service_view(service)
+    signature = _x402_payment_header(request)
+    amount = float(view["price_usdc"])
+
+    async def fail(detail: str | None, quote: dict | None = None) -> JSONResponse:
+        if quote is None or _quote_problem(quote, view["key"]):
+            quote = await _fresh_quote_for_request(product=product, service=service, recipient=recipient, request=request)
+        return _payment_response_for(service, recipient, detail, quote, style, request)
+
+    if signature:
+        decoded = None
+        try:
+            decoded = decode_payment_header(signature)
+        except Exception:
+            decoded = None
+        bound_quote_id = _quote_id_from_sources(request, quote_id, decoded)
+        quote = await _load_payment_quote(db, bound_quote_id) if bound_quote_id else None
+        if bound_quote_id and _quote_problem(quote, view["key"]):
+            return await fail(_quote_problem(quote, view["key"]), None)
+        resource_url = (quote or {}).get("resource_url") or _agent_income_resource_url(request)
+        requirements = _service_requirements(view, resource_url, recipient)
+        if quote:
+            _stamp_quote_on_requirements(requirements, quote, resource_url)
+        if not credentials_configured():
+            return await fail(
+                "Standard x402 payment was received, but facilitator credentials are not configured. "
+                "Set CDP_API_KEY_ID and CDP_API_KEY_SECRET, or pay with X-Payment-Tx and quote_id.",
+                quote,
+            )
+        try:
+            settled = await verify_and_settle(signature, requirements)
+        except Exception:
+            return await fail("Standard x402 payment could not be settled.", quote)
+        if not settled.get("ok"):
+            return await fail(str(settled.get("error") or "Standard x402 payment was rejected."), quote)
+        tx_hash = str(settled.get("tx_hash") or "").strip()
+        if not tx_hash:
+            return await fail("Facilitator settled the payment without a transaction hash.", quote)
+        if await _payment_tx_consumed(db, tx_hash):
+            raise HTTPException(status_code=409, detail="This payment transaction has already been consumed")
+        payer = settled.get("payer")
+        verification = {
+            "verified": True,
+            "error": None,
+            "amount_usdc": amount,
+            "confirmations": None,
+            "from_address": payer,
+            "block_number": None,
+            "block_timestamp": None,
+            "settlement": "x402_facilitator",
+        }
+        await _mark_quote_consumed(db, quote["id"] if quote else None, tx_hash)
+        await _insert_used_payment_tx(
+            db,
+            tx_hash=tx_hash,
+            service_id=view["key"],
+            quote_id=quote["id"] if quote else None,
+            payer=payer,
+            amount=amount,
+            product=product,
+        )
+        return {"verification": verification, "tx_hash": tx_hash, "quote_id": quote["id"] if quote else bound_quote_id, "payer": payer}
+
+    if not payment_tx:
+        quote = await _fresh_quote_for_request(product=product, service=service, recipient=recipient, request=request)
+        return _payment_response_for(service, recipient, None, quote, style, request)
+
+    if not TX_HASH_RE.fullmatch(payment_tx):
+        raise HTTPException(status_code=400, detail="A valid Base transaction hash is required")
+    if await _payment_tx_consumed(db, payment_tx):
+        raise HTTPException(status_code=409, detail="This payment transaction has already been consumed")
+
+    bound_quote_id = _quote_id_from_sources(request, quote_id, None)
+    if not bound_quote_id:
+        return await fail(
+            "quote_id is required. Call the endpoint without a payment to receive a quote, then retry with that quote_id."
+        )
+    quote = await _load_payment_quote(db, bound_quote_id)
+    problem = _quote_problem(quote, view["key"])
+    if problem:
+        return await fail(problem, None)
+    verification = await verify_usdc_payment(
+        payment_tx,
+        amount,
+        recipient,
+        not_before=_parse_timestamp(quote["created_at"]),
+    )
+    if not verification.get("verified"):
+        return await fail(verification.get("error") or "Payment verification failed", quote)
+    payer = verification.get("from_address")
+    await _mark_quote_consumed(db, quote["id"], payment_tx)
+    await _insert_used_payment_tx(
+        db,
+        tx_hash=payment_tx,
+        service_id=view["key"],
+        quote_id=quote["id"],
+        payer=payer,
+        amount=amount,
+        product=product,
+    )
+    return {"verification": verification, "tx_hash": payment_tx, "quote_id": quote["id"], "payer": payer}
+
+
 async def _run_agent_income_paid_offer(
     offer_slug: str,
     request: Request,
@@ -7222,32 +7672,31 @@ async def _run_agent_income_paid_offer(
     payload = await _read_agent_income_paid_payload(request)
     customer_input = _agent_income_extract_paid_input(payload)
     recipient = _agent_income_public_recipient()
-    resource_url = _agent_income_resource_url(request)
     if not recipient:
         raise HTTPException(status_code=503, detail="Agent Income receiving wallet is not configured")
     if not USDC_CONTRACT:
         raise HTTPException(status_code=503, detail="USDC_CONTRACT must be configured for Base payment verification")
 
     payment_tx = str(payload.get("payment_tx") or x_payment_tx or "").strip()
-    if not payment_tx:
-        return _payment_required_response(offer, resource_url, recipient)
-    if not TX_HASH_RE.fullmatch(payment_tx):
-        raise HTTPException(status_code=400, detail="A valid Base transaction hash is required")
+    quote_id = str(payload.get("quote_id") or "").strip()
 
     db = await get_db()
     try:
-        duplicate = await (
-            await db.execute(
-                "SELECT id FROM agent_income_ledger WHERE provider = ? AND provider_ref = ?",
-                ("base_usdc", payment_tx),
-            )
-        ).fetchone()
-        if duplicate:
-            raise HTTPException(status_code=409, detail="This payment transaction has already been consumed")
-
-        verification = await verify_usdc_payment(payment_tx, float(offer["price_usdc"]), recipient)
-        if not verification["verified"]:
-            return _payment_required_response(offer, resource_url, recipient, verification["error"])
+        settled = await _collect_service_payment(
+            db,
+            request,
+            product="agent-income",
+            service=offer,
+            recipient=recipient,
+            payment_tx=payment_tx,
+            quote_id=quote_id,
+            style="agent-income",
+        )
+        if isinstance(settled, JSONResponse):
+            return settled
+        payment_tx = settled["tx_hash"]
+        verification = settled["verification"]
+        quote_id = settled.get("quote_id")
 
         output = _agent_income_paid_offer_output(offer, customer_input)
         economics = _agent_income_offer_economics(offer)
@@ -7271,9 +7720,12 @@ async def _run_agent_income_paid_offer(
                 json.dumps({
                     "project": "agent-income",
                     "service": offer["key"],
+                    "service_id": offer["key"],
                     "service_label": offer["label"],
+                    "payer": verification.get("from_address"),
                     "payer_agent": payload.get("payer_agent"),
                     "request_id": payload.get("request_id"),
+                    "quote_id": quote_id,
                     "customer_input_hash": output["input_hash"],
                     "output": output,
                     "verification": verification,
@@ -8154,7 +8606,7 @@ async def build_agent_income_dashboard(owner: str = AGENT_INCOME_OWNER) -> dict:
             "description": offer["description"],
             "price_usdc": float(offer["price_usdc"]),
             "path": offer["path"],
-            "endpoint": f"{BASE_URL.rstrip('/')}{offer['path']}",
+            "endpoint": f"{advertised_base_url()}{offer['path']}",
             "max_work_seconds": offer["max_work_seconds"],
             "effective_hourly_rate_usd": economics["effective_hourly_rate_usd"],
             "goal_effective_hourly_rate_usd": economics["goal_effective_hourly_rate_usd"],
@@ -8254,7 +8706,7 @@ async def build_agent_income_dashboard(owner: str = AGENT_INCOME_OWNER) -> dict:
         "bot_services": [
             {
                 **service,
-                "endpoint": f"{BASE_URL.rstrip('/')}/agent-income/api/bot-services/{service['key']}",
+                "endpoint": f"{advertised_base_url()}/agent-income/api/bot-services/{service['key']}",
                 "payment_required": True,
             }
             for service in AGENT_BOT_SERVICES
@@ -8701,7 +9153,7 @@ async def _bot_comm_balances() -> dict:
 
 def _bot_comm_service_manifest(service: dict) -> dict:
     service_path = service.get("path") or service["id"].replace("_", "-")
-    endpoint = f"{BASE_URL.rstrip('/')}/bot-comm/{service_path}"
+    endpoint = f"{advertised_base_url()}/bot-comm/{service_path}"
     return {
         "id": service["id"],
         "path": service_path,
@@ -8711,7 +9163,7 @@ def _bot_comm_service_manifest(service: dict) -> dict:
         "service_type": service.get("service_type", "standard"),
         "method": "POST",
         "endpoint": endpoint,
-        "api_endpoint": f"{BASE_URL.rstrip('/')}/bot-comm/api/services/{service['id']}",
+        "api_endpoint": f"{advertised_base_url()}/bot-comm/api/services/{service['id']}",
         "price": {
             "amount": money(service["price_usdc"]),
             "currency": "USDC",
@@ -8721,10 +9173,13 @@ def _bot_comm_service_manifest(service: dict) -> dict:
             "payment_uri": _bot_comm_payment_uri(service["price_usdc"]),
         },
         "payment": {
-            "protocol": "x402-compatible-http-402",
-            "retry_header": "X-Payment-Tx",
+            "protocol": "x402",
+            "facilitator": facilitator_url(),
+            "retry_header": "PAYMENT-SIGNATURE",
+            "legacy_retry_header": "X-PAYMENT",
+            "direct_tx_header": "X-Payment-Tx",
             "body_field": "payment_tx",
-            "settlement": "Native Base USDC transfer verified on-chain before output is released.",
+            "settlement": "x402 exact settlement through the configured facilitator, or a direct Base USDC transfer bound to a quote.",
             "clearance_requirement": "Fulfillment requires an active Clearance-approved Bot-Comm microtransaction budget.",
         },
         "input_example": service["sample_input"],
@@ -8738,11 +9193,11 @@ def _bot_comm_service_manifest(service: dict) -> dict:
 
 
 def _bot_comm_public_url() -> str:
-    return f"{BASE_URL.rstrip('/')}/bot-comm/market"
+    return f"{advertised_base_url()}/bot-comm/market"
 
 
 def _bot_comm_discovery_links() -> dict:
-    base = BASE_URL.rstrip("/")
+    base = advertised_base_url()
     return {
         "website": _bot_comm_public_url(),
         "operatorDashboard": f"{base}/bot-comm",
@@ -8819,7 +9274,8 @@ def _bot_comm_x402_document() -> dict:
             "url": BRAND_URL,
             "contact": BOT_COMM_CONTACT_EMAIL,
         },
-        "baseUrl": BASE_URL.rstrip("/"),
+        "baseUrl": advertised_base_url(),
+        "facilitator": facilitator_url(),
         "humanReadableUrl": _bot_comm_public_url(),
         "network": f"eip155:{PAYMENT_CHAIN_ID}",
         "chain": PAYMENT_CHAIN,
@@ -8852,7 +9308,7 @@ def _bot_comm_agent_card() -> dict:
         "contact": BOT_COMM_CONTACT_EMAIL,
         "protocols": {
             "x402": {
-                "discovery": f"{BASE_URL.rstrip('/')}/.well-known/x402.json",
+                "discovery": f"{advertised_base_url()}/.well-known/x402.json",
                 "network": f"eip155:{PAYMENT_CHAIN_ID}",
                 "asset": USDC_CONTRACT,
                 "currency": "USDC",
@@ -8920,7 +9376,7 @@ def _bot_comm_openapi_document() -> dict:
             "version": "1.0.0",
             "description": "Paid HTTP 402 services settled in USDC on Base.",
         },
-        "servers": [{"url": BASE_URL.rstrip("/")}],
+        "servers": [{"url": advertised_base_url()}],
         "paths": {
             "/bot-comm/api/services": {
                 "get": {
@@ -8939,9 +9395,9 @@ def _bot_comm_llms_text(full: bool = False) -> str:
         "",
         "Bot-Comm sells small paid JSON services to autonomous agents.",
         f"Public buyer page: {_bot_comm_public_url()}",
-        f"Service catalog: {BASE_URL.rstrip('/')}/bot-comm/api/services",
-        f"x402 discovery: {BASE_URL.rstrip('/')}/.well-known/x402.json",
-        f"Agent card: {BASE_URL.rstrip('/')}/.well-known/agent-card.json",
+        f"Service catalog: {advertised_base_url()}/bot-comm/api/services",
+        f"x402 discovery: {advertised_base_url()}/.well-known/x402.json",
+        f"Agent card: {advertised_base_url()}/.well-known/agent-card.json",
         "",
         "Payment flow:",
         "1. POST to a service endpoint.",
@@ -9541,7 +9997,7 @@ def _bot_comm_quote_payload(service: dict, quote_id: str, request: Request | Non
         "next_action": "Submit valid payment proof or payment authorization, then retry this request with the quote_id.",
     }
     if request is not None:
-        payload["endpoint"] = f"{BASE_URL.rstrip('/')}{request.url.path}"
+        payload["endpoint"] = f"{advertised_base_url()}{request.url.path}"
     if payment_uri:
         payload["payment_uri"] = payment_uri
     return payload
@@ -11326,54 +11782,56 @@ async def _bot_comm_state(viewer: dict | None = None) -> dict:
     }
 
 
-def _bot_comm_payment_required_response(service: dict, request: Request, quote_payload: dict, detail: str | None = None) -> JSONResponse:
+def _bot_comm_payment_required_response(
+    service: dict,
+    request: Request,
+    quote_payload: dict,
+    detail: str | None = None,
+    quote: dict | None = None,
+) -> JSONResponse:
     manifest = _bot_comm_service_manifest(service)
-    requirements = {
-        "x402Version": 1,
-        "accepts": [
-            {
-                "scheme": "exact",
-                "network": PAYMENT_CHAIN,
-                "maxAmountRequired": str(_bot_comm_amount_units(service["price_usdc"])),
-                "payTo": _bot_comm_public_recipient(),
-                "asset": USDC_CONTRACT,
-                "resource": f"{BASE_URL.rstrip('/')}{request.url.path}",
-                "description": service["summary"],
-                "mimeType": "application/json",
-                "maxTimeoutSeconds": 600,
-                "extra": {
-                    "displayAmount": f"{float(service['price_usdc']):.2f} USDC",
-                    "chainId": PAYMENT_CHAIN_ID,
-                    "directBaseTxHeader": "X-Payment-Tx",
-                    "bodyField": "payment_tx",
-                    "quoteId": quote_payload.get("quote_id"),
-                    "reference": service["id"],
-                },
-            }
-        ],
-    }
+    recipient = _bot_comm_public_recipient()
+    resource_url = (quote or {}).get("resource_url") or quote_payload.get("endpoint") or f"{advertised_base_url()}{request.url.path}"
+    if quote and quote.get("id"):
+        resource_url = _resource_with_quote(resource_url, quote["id"])
+    requirements = _agent_income_x402_requirements(_paid_service_view(service), resource_url, recipient)
+    legacy = _agent_income_legacy_x402_requirements(_paid_service_view(service), resource_url, recipient)
+    if quote:
+        _stamp_quote_on_requirements(requirements, quote, resource_url)
+        _stamp_quote_on_requirements(legacy, quote, resource_url)
+    elif quote_payload.get("quote_id"):
+        for accept in requirements.get("accepts") or []:
+            extra = accept.setdefault("extra", {})
+            extra["quoteId"] = quote_payload.get("quote_id")
     encoded = base64.b64encode(json.dumps(requirements, separators=(",", ":")).encode("utf-8")).decode("ascii")
     content = {
         **quote_payload,
         "payment": requirements,
+        "legacy_payment": legacy,
+        "quote_id": (quote or {}).get("id") or quote_payload.get("quote_id"),
         "service": manifest,
         "abuse_policy": manifest["abuse_policy"],
         "refund_policy": manifest["refund_policy"],
         "clearance_requirement": manifest["payment"]["clearance_requirement"],
-        "retry": "Send native USDC on Base to the receiver, then retry with X-Payment-Tx or body.payment_tx and quote_id set.",
+        "retry": (
+            "Retry with a standard x402 exact payment in the PAYMENT-SIGNATURE header "
+            "(legacy header X-PAYMENT is also accepted), or send USDC on Base and retry "
+            "with X-Payment-Tx or body.payment_tx plus quote_id."
+        ),
     }
     if detail:
         content["detail"] = detail
+        content["error"] = detail
     return JSONResponse(
         status_code=402,
         headers={
             "PAYMENT-REQUIRED": encoded,
             "X-Payment-Requirements": encoded,
             "X-Payment-Required": "true",
-            "X-Payment-Network": "base",
+            "X-Payment-Network": f"eip155:{PAYMENT_CHAIN_ID}",
             "X-Payment-Currency": "USDC",
             "X-Payment-Amount": f"{float(service['price_usdc']):.2f}",
-            "X-Payment-Recipient": _bot_comm_public_recipient() or "",
+            "X-Payment-Recipient": recipient or "",
         },
         content=content,
     )
@@ -11653,10 +12111,21 @@ async def bot_comm_services():
 
 
 @app.get("/bot-comm/api/services/{service_id}", tags=["Bot-Comm"])
-async def bot_comm_service_info(service_id: str):
+async def bot_comm_service_info(service_id: str, request: Request):
     service = _bot_comm_service(service_id)
     if not _bot_comm_service_allowed(service):
         return JSONResponse(status_code=400, content={"status": "rejected", "reason": "unknown_service"})
+    accept = (request.headers.get("accept") or "").lower()
+    if "application/json" in accept and str(request.query_params.get("x402") or "") == "1":
+        recipient = _bot_comm_public_recipient()
+        if not recipient:
+            raise HTTPException(status_code=503, detail="Bot-Comm receiving wallet is not configured")
+        if not USDC_CONTRACT:
+            raise HTTPException(status_code=503, detail="USDC_CONTRACT must be configured for Base payment verification")
+        quote = await _fresh_quote_for_request(product="bot-comm", service=service, recipient=recipient, request=request)
+        quote_payload = _bot_comm_quote_payload(service, quote["id"], request)
+        quote_payload["endpoint"] = quote["resource_url"]
+        return _bot_comm_payment_required_response(service, request, quote_payload, quote=quote)
     return _bot_comm_service_manifest(service)
 
 
@@ -11799,9 +12268,12 @@ async def _bot_comm_execute_paid_service(
         return JSONResponse(status_code=409, content={"status": "rejected", "reason": "unprofitable_service_economics", "economics": economics, "attempt_id": attempt["attempt_id"]})
 
     payment_tx = (_bot_comm_request_field(body, raw_body, "payment_tx") or x_payment_tx or "").strip()
-    quote_id = str(payload.get("quote_id") or _bot_comm_request_field(body, raw_body, "request_id") or generate_id("quote"))[:160]
-    if not payment_tx:
+    supplied_quote = str(payload.get("quote_id") or _bot_comm_request_field(body, raw_body, "quote_id") or "").strip()[:160]
+    if not payment_tx and not _x402_payment_header(request):
+        quote = await _fresh_quote_for_request(product="bot-comm", service=service, recipient=recipient, request=request)
+        quote_id = quote["id"]
         quote_payload = _bot_comm_quote_payload(service, quote_id, request)
+        quote_payload["endpoint"] = quote["resource_url"]
         await _bot_comm_persist_quote(
             quote_id=quote_id,
             attempt_id=attempt_id,
@@ -11842,38 +12314,82 @@ async def _bot_comm_execute_paid_service(
                 "reason": "safe_unpaid_request",
             },
         )
-        return _bot_comm_payment_required_response(service, request, quote_payload)
-    if not TX_HASH_RE.fullmatch(payment_tx):
-        raise HTTPException(status_code=400, detail="A valid Base transaction hash is required")
+        return _bot_comm_payment_required_response(service, request, quote_payload, quote=quote)
 
-    verification = await verify_usdc_payment(payment_tx, float(service["price_usdc"]), recipient)
-    if not verification.get("verified"):
-        quote_payload = _bot_comm_quote_payload(service, quote_id, request)
-        attempt = await _bot_comm_upsert_attempt({
-            **received_attempt,
-            "payment_status": "invalid_or_pending",
-            "clearance_status": "not_checked",
-            "safety_status": "safe",
-            "quote_id": quote_id,
-            "quote": quote_payload,
-            "status": "PAYMENT_PENDING",
-            "reason": "payment_invalid",
-        })
-        await _bot_comm_log_call(
-            service_id=service["id"],
-            buyer_bot_id=buyer_bot_id,
-            buyer_bot_source=buyer_bot_source,
-            authorization_basis=authorization_basis,
-            economics={**economics, "customer_price_usd": 0, "net_profit_usd": 0},
-            latency_ms=int((datetime.now(timezone.utc) - started).total_seconds() * 1000),
-            clearance_policy_id=None,
-            result_code="PAYMENT_PENDING",
-            risk_flags=risk_flags,
-            repeat_buyer=False,
-            provider_ref=payment_tx,
-            metadata={"request_status": "PAYMENT_PENDING", "attempt": attempt, "verification": verification, "payment_verified": False},
+    db = await get_db()
+    try:
+        settled = await _collect_service_payment(
+            db,
+            request,
+            product="bot-comm",
+            service=service,
+            recipient=recipient,
+            payment_tx=payment_tx,
+            quote_id=supplied_quote,
+            style="bot-comm",
         )
-        return JSONResponse(status_code=402, content={"status": "payment_invalid", "delivered": False, "quote_id": quote_id, "next_action": "Submit valid payment proof.", "reason": verification.get("error")})
+        if isinstance(settled, JSONResponse):
+            attempt = await _bot_comm_upsert_attempt({
+                **received_attempt,
+                "payment_status": "invalid_or_pending",
+                "clearance_status": "not_checked",
+                "safety_status": "safe",
+                "quote_id": supplied_quote or None,
+                "status": "PAYMENT_PENDING",
+                "reason": "payment_invalid",
+            })
+            await _bot_comm_log_call(
+                service_id=service["id"],
+                buyer_bot_id=buyer_bot_id,
+                buyer_bot_source=buyer_bot_source,
+                authorization_basis=authorization_basis,
+                economics={**economics, "customer_price_usd": 0, "net_profit_usd": 0},
+                latency_ms=int((datetime.now(timezone.utc) - started).total_seconds() * 1000),
+                clearance_policy_id=None,
+                result_code="PAYMENT_PENDING",
+                risk_flags=risk_flags,
+                repeat_buyer=False,
+                provider_ref=payment_tx or None,
+                metadata={"request_status": "PAYMENT_PENDING", "attempt": attempt, "payment_verified": False},
+            )
+            return settled
+        payment_tx = settled["tx_hash"]
+        verification = settled["verification"]
+        quote_id = settled.get("quote_id") or supplied_quote
+        ledger_id = generate_id("bc")
+        recorded_at = now_iso()
+        payment_metadata = {
+            "service_id": service["id"],
+            "service": service["title"],
+            "payer": verification.get("from_address"),
+            "from_address": verification.get("from_address"),
+            "payer_agent": _bot_comm_request_field(body, raw_body, "payer_agent"),
+            "request_id": _bot_comm_request_field(body, raw_body, "request_id"),
+            "quote_id": quote_id,
+            "buyer_bot_id": buyer_bot_id,
+            "economics": economics,
+            "verification": verification,
+        }
+        await db.execute(
+            """INSERT INTO agent_income_ledger
+               (id, event_type, amount, currency, status, provider, provider_ref, created_at, metadata)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                ledger_id,
+                "bot_comm_service_payment",
+                float(service["price_usdc"]),
+                "USDC",
+                "verified",
+                "base_usdc",
+                payment_tx,
+                recorded_at,
+                json.dumps(payment_metadata),
+            ),
+        )
+        await db.commit()
+        entry = {"id": ledger_id, "amountUSDC": money(service["price_usdc"]), "txHash": payment_tx, "metadata": payment_metadata}
+    finally:
+        await db.close()
 
     paid_attempt = await _bot_comm_upsert_attempt({
         **received_attempt,
@@ -11980,23 +12496,6 @@ async def _bot_comm_execute_paid_service(
         "clearance_policy_id": policy["id"],
         "reason": "covered_by_clearance_policy",
     })
-    entry = await _bot_comm_record_payment(
-        "bot_comm_service_payment",
-        float(service["price_usdc"]),
-        payment_tx,
-        {
-            "service_id": service["id"],
-            "service": service["title"],
-            "payer_agent": _bot_comm_request_field(body, raw_body, "payer_agent"),
-            "request_id": _bot_comm_request_field(body, raw_body, "request_id"),
-            "from_address": verification.get("from_address"),
-            "clearance_policy_id": policy["id"],
-            "buyer_bot_id": buyer_bot_id,
-            "economics": economics,
-            "verification": verification,
-            "output": output,
-        },
-    )
     delivered_attempt = await _bot_comm_upsert_attempt({
         **cleared_attempt,
         "status": "DELIVERED",
@@ -12283,7 +12782,7 @@ async def agent_income_agent_manifest():
             "price_usd": float(offer["price_usdc"]),
             "currency": "USDC",
             "method": "POST",
-            "endpoint": f"{BASE_URL.rstrip('/')}{offer['path']}",
+            "endpoint": f"{advertised_base_url()}{offer['path']}",
             "input_schema": offer["input_schema"],
             "output_schema": offer["output_schema"],
             "max_work_seconds": offer["max_work_seconds"],
@@ -12310,7 +12809,7 @@ async def agent_income_agent_manifest():
             "price": f"${float(service['price_usdc']):.2f}",
             "currency": "USDC",
             "method": "POST",
-            "endpoint": f"{BASE_URL.rstrip('/')}/agent-income/api/bot-services/{service['key']}",
+            "endpoint": f"{advertised_base_url()}/agent-income/api/bot-services/{service['key']}",
             "input_schema": service["input_schema"],
         }
         for service in AGENT_BOT_SERVICES
@@ -12322,7 +12821,7 @@ async def agent_income_agent_manifest():
         "logo": f"{BASE_URL.rstrip('/')}{_agent_income_asset_url('logo.png')}",
         "icon": f"{BASE_URL.rstrip('/')}{_agent_income_asset_url('mark.png')}",
         "favicon": f"{BASE_URL.rstrip('/')}{_agent_income_asset_url('favicon.png')}",
-        "humanReadableUrl": f"{BASE_URL.rstrip('/')}/agent-income/agents",
+        "humanReadableUrl": f"{advertised_base_url()}/agent-income/agents",
         "businessModel": "Charge first. Spend second. Deliver third.",
         "defaultPaidOffers": paid_offers,
         "customQuote": {
@@ -12507,7 +13006,7 @@ async def agent_income_agent_market_page():
 
 
 def _agent_income_paid_offer_html(offer: dict) -> str:
-    endpoint = f"{BASE_URL.rstrip('/')}{offer['path']}"
+    endpoint = f"{advertised_base_url()}{offer['path']}"
     if offer["key"] == "anchor_compliance_readiness":
         sample_payload = {
             "project_url": "https://example-custodian.com",
@@ -12646,13 +13145,12 @@ def _agent_income_paid_offer_html(offer: dict) -> str:
 
 @app.get("/agent-income/audit", tags=["Agent Income"])
 async def agent_income_audit_page(request: Request):
-    return _agent_income_get_offer_response("audit", request)
+    return await _agent_income_get_offer_response("audit", request)
 
 
 @app.head("/agent-income/audit", tags=["Agent Income"])
-async def agent_income_audit_head():
-    offer = _agent_income_paid_offer("audit")
-    return _payment_required_response(offer, f"{BASE_URL.rstrip()}{offer['path']}", _agent_income_public_recipient())
+async def agent_income_audit_head(request: Request):
+    return await _quoted_payment_required(_agent_income_paid_offer("audit"), request)
 
 
 @app.post("/agent-income/audit", tags=["Agent Income"])
@@ -12675,26 +13173,29 @@ def _agent_income_wants_html_checkout(request: Request) -> bool:
     return "text/html" in accept
 
 
-def _agent_income_get_offer_response(offer_key: str, request: Request):
+async def _quoted_payment_required(offer: dict, request: Request) -> JSONResponse:
+    recipient = _agent_income_public_recipient()
+    if not recipient:
+        raise HTTPException(status_code=503, detail="Agent Income receiving wallet is not configured")
+    quote = await _fresh_quote_for_request(product="agent-income", service=offer, recipient=recipient, request=request)
+    return _payment_required_response(offer, quote["resource_url"], recipient, quote=quote)
+
+
+async def _agent_income_get_offer_response(offer_key: str, request: Request):
     offer = _agent_income_paid_offer(offer_key)
     if _agent_income_wants_html_checkout(request):
         return HTMLResponse(_agent_income_paid_offer_html(offer))
-    return _payment_required_response(
-        offer,
-        f"{BASE_URL.rstrip()}{offer['path']}",
-        _agent_income_public_recipient(),
-    )
+    return await _quoted_payment_required(offer, request)
 
 
 @app.get("/agent-income/review", tags=["Agent Income"])
 async def agent_income_review_page(request: Request):
-    return _agent_income_get_offer_response("review", request)
+    return await _agent_income_get_offer_response("review", request)
 
 
 @app.head("/agent-income/review", tags=["Agent Income"])
-async def agent_income_review_head():
-    offer = _agent_income_paid_offer("review")
-    return _payment_required_response(offer, f"{BASE_URL.rstrip()}{offer['path']}", _agent_income_public_recipient())
+async def agent_income_review_head(request: Request):
+    return await _quoted_payment_required(_agent_income_paid_offer("review"), request)
 
 
 @app.post("/agent-income/review", tags=["Agent Income"])
@@ -12704,13 +13205,12 @@ async def agent_income_review(request: Request, x_payment_tx: str | None = Heade
 
 @app.get("/agent-income/blueprint", tags=["Agent Income"])
 async def agent_income_blueprint_page(request: Request):
-    return _agent_income_get_offer_response("blueprint", request)
+    return await _agent_income_get_offer_response("blueprint", request)
 
 
 @app.head("/agent-income/blueprint", tags=["Agent Income"])
-async def agent_income_blueprint_head():
-    offer = _agent_income_paid_offer("blueprint")
-    return _payment_required_response(offer, f"{BASE_URL.rstrip()}{offer['path']}", _agent_income_public_recipient())
+async def agent_income_blueprint_head(request: Request):
+    return await _quoted_payment_required(_agent_income_paid_offer("blueprint"), request)
 
 
 @app.post("/agent-income/blueprint", tags=["Agent Income"])
@@ -12720,7 +13220,20 @@ async def agent_income_blueprint(request: Request, x_payment_tx: str | None = He
 
 @app.get("/agent-income/anchor-compliance", tags=["Agent Income"])
 async def agent_income_anchor_compliance_page(request: Request):
-    return _agent_income_get_offer_response("anchor-compliance", request)
+    return await _agent_income_get_offer_response("anchor-compliance", request)
+
+
+@app.api_route("/agent-income/test-ping", methods=["GET", "HEAD", "POST"], include_in_schema=False)
+async def agent_income_test_ping(
+    request: Request,
+    x_payment_tx: str | None = Header(None, alias="X-Payment-Tx"),
+):
+    """Hidden owner probe. Exists only when TEST_PRICE_USD is set."""
+    if _hidden_test_offer() is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    if request.method == "POST":
+        return await _run_agent_income_paid_offer("test-ping", request, x_payment_tx)
+    return await _quoted_payment_required(_agent_income_paid_offer("test-ping"), request)
 
 
 @app.post("/agent-income/anchor-compliance", tags=["Agent Income"])
@@ -12798,7 +13311,7 @@ async def list_agent_income_bot_services():
 @app.get("/agent-income/api/bot-services/{service_key}", response_class=HTMLResponse, tags=["Agent Income"])
 async def agent_income_bot_service_page(service_key: str):
     service = _agent_bot_service(service_key)
-    endpoint = f"{BASE_URL.rstrip('/')}/agent-income/api/bot-services/{service['key']}"
+    endpoint = f"{advertised_base_url()}/agent-income/api/bot-services/{service['key']}"
     endpoint_path = f"/agent-income/api/bot-services/{service['key']}"
     sample_body = json.dumps(
         {"input": {key: f"example_{key}" for key in service["input_schema"].get("required", [])}},
@@ -12912,32 +13425,31 @@ async def run_agent_income_bot_service(
 ):
     service = _agent_bot_service(service_key)
     recipient = _agent_income_public_recipient()
-    resource_url = _agent_income_resource_url(request)
     if not recipient:
         raise HTTPException(status_code=503, detail="Agent Income receiving wallet is not configured")
     if not USDC_CONTRACT:
         raise HTTPException(status_code=503, detail="USDC_CONTRACT must be configured for Base payment verification")
 
     payment_tx = (body.payment_tx or x_payment_tx or "").strip()
-    if not payment_tx:
-        return _payment_required_response(service, resource_url, recipient)
-    if not TX_HASH_RE.fullmatch(payment_tx):
-        raise HTTPException(status_code=400, detail="A valid Base transaction hash is required")
+    quote_id = str(body.quote_id or "").strip()
 
     db = await get_db()
     try:
-        duplicate = await (
-            await db.execute(
-                "SELECT id FROM agent_income_ledger WHERE provider = ? AND provider_ref = ?",
-                ("base_usdc", payment_tx),
-            )
-        ).fetchone()
-        if duplicate:
-            raise HTTPException(status_code=409, detail="This payment transaction has already been consumed")
-
-        verification = await verify_usdc_payment(payment_tx, float(service["price_usdc"]), recipient)
-        if not verification["verified"]:
-            return _payment_required_response(service, resource_url, recipient, verification["error"])
+        settled = await _collect_service_payment(
+            db,
+            request,
+            product="agent-income",
+            service=service,
+            recipient=recipient,
+            payment_tx=payment_tx,
+            quote_id=quote_id,
+            style="agent-income",
+        )
+        if isinstance(settled, JSONResponse):
+            return settled
+        payment_tx = settled["tx_hash"]
+        verification = settled["verification"]
+        quote_id = settled.get("quote_id")
 
         task = await (
             await db.execute(
@@ -12969,8 +13481,11 @@ async def run_agent_income_bot_service(
                 recorded_at,
                 json.dumps({
                     "service": service_key,
+                    "service_id": service_key,
+                    "payer": verification.get("from_address"),
                     "payer_agent": body.payer_agent,
                     "request_id": body.request_id,
+                    "quote_id": quote_id,
                     "input_hash": output["input_hash"],
                     "output": output,
                     "verification": verification,
@@ -13133,7 +13648,12 @@ async def claim_agent_income_public_payment(task_id: str, body: AgentIncomePubli
         if duplicate:
             raise HTTPException(status_code=409, detail="This payment reference has already been recorded")
 
-        verification = await verify_usdc_payment(body.provider_ref, money(task["expected_payout"]), recipient)
+        verification = await verify_usdc_payment(
+            body.provider_ref,
+            money(task["expected_payout"]),
+            recipient,
+            not_before=_parse_timestamp(task.get("created_at")),
+        )
         if not verification["verified"]:
             raise HTTPException(status_code=402, detail=verification["error"])
 
@@ -13346,7 +13866,7 @@ async def create_agent_income_bot_market_run(
 
         for service in services:
             task_id = generate_id("aitask")
-            endpoint = f"{BASE_URL.rstrip('/')}/agent-income/api/bot-services/{service['key']}"
+            endpoint = f"{advertised_base_url()}/agent-income/api/bot-services/{service['key']}"
             deliverable = (
                 f"# {service['label']}\n\n"
                 f"Run: {run_id}\n"
@@ -14915,6 +15435,122 @@ async def stripe_webhook(request: Request):
 
     response = await fulfill_stripe_checkout_session(event["data"]["object"])
     return {"received": True, **response}
+
+
+def _presented_admin_secrets(request: Request) -> list[str]:
+    found: list[str] = []
+    authorization = request.headers.get("authorization", "")
+    if authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1].strip()
+        if token:
+            found.append(token)
+    for name in ("x-admin-token", "x-bot-comm-password"):
+        value = request.headers.get(name)
+        if value and str(value).strip():
+            found.append(str(value).strip())
+    return found
+
+
+def _secret_equals(candidate: str, secret: str) -> bool:
+    if not candidate or not secret or len(candidate) != len(secret):
+        return False
+    return secrets.compare_digest(candidate, secret)
+
+
+def _revenue_authorized(request: Request) -> bool:
+    password = os.getenv("BOT_COMM_PASSWORD", "").strip() or BOT_COMM_PASSWORD
+    admin = os.getenv("ADMIN_TOKEN", "").strip() or ADMIN_TOKEN
+    allowed = [value for value in (password, admin) if value]
+    for candidate in _presented_admin_secrets(request):
+        for secret in allowed:
+            if _secret_equals(candidate, secret):
+                return True
+    return False
+
+
+def _ledger_service_id(metadata: dict) -> str | None:
+    for key in ("service_id", "service"):
+        value = metadata.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _ledger_payer(metadata: dict) -> str | None:
+    verification = metadata.get("verification") if isinstance(metadata.get("verification"), dict) else {}
+    for source in (
+        metadata.get("payer"),
+        metadata.get("from_address"),
+        verification.get("from_address"),
+        metadata.get("payer_agent"),
+    ):
+        if source:
+            return str(source)
+    return None
+
+
+def _add_service_total(bucket: dict, service_id: str, amount: float) -> None:
+    bucket[service_id] = money(bucket.get(service_id, 0) + amount)
+
+
+@app.get("/v1/revenue/payments", tags=["Payments"])
+async def revenue_payments(request: Request):
+    """Per-service log of verified paid calls. Requires BOT_COMM_PASSWORD or ADMIN_TOKEN."""
+    if not _revenue_authorized(request):
+        raise HTTPException(status_code=401, detail="Admin authentication required")
+    db = await get_db()
+    try:
+        placeholders = ",".join("?" for _ in PAID_CALL_EVENT_TYPES)
+        rows = await (
+            await db.execute(
+                f"""SELECT created_at, amount, provider_ref, metadata, event_type
+                    FROM agent_income_ledger
+                    WHERE status = 'verified' AND event_type IN ({placeholders})
+                    ORDER BY created_at DESC""",
+                PAID_CALL_EVENT_TYPES,
+            )
+        ).fetchall()
+    finally:
+        await db.close()
+
+    now = datetime.now(timezone.utc)
+    day_ago = now - timedelta(hours=24)
+    week_ago = now - timedelta(days=7)
+    payments = []
+    totals = {"24h": {}, "7d": {}, "all_time": {}}
+    for row in rows:
+        metadata = _load_json(row["metadata"], {})
+        if not isinstance(metadata, dict):
+            metadata = {}
+        service_id = _ledger_service_id(metadata)
+        if not service_id:
+            continue
+        created = _parse_timestamp(row["created_at"]) or now
+        amount = money(row["amount"])
+        payments.append({
+            "time": row["created_at"],
+            "service_id": service_id,
+            "amount": amount,
+            "tx_hash": row["provider_ref"],
+            "payer": _ledger_payer(metadata),
+        })
+        _add_service_total(totals["all_time"], service_id, amount)
+        if created >= week_ago:
+            _add_service_total(totals["7d"], service_id, amount)
+        if created >= day_ago:
+            _add_service_total(totals["24h"], service_id, amount)
+
+    def packed(bucket: dict) -> dict:
+        return {"by_service": bucket, "total": money(sum(bucket.values()))}
+
+    return {
+        "payments": payments,
+        "totals": {
+            "24h": packed(totals["24h"]),
+            "7d": packed(totals["7d"]),
+            "all_time": packed(totals["all_time"]),
+        },
+    }
 
 
 @app.get("/v1/payments/info", tags=["Payments"])

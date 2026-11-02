@@ -3,13 +3,27 @@ import os
 import sqlite3
 from datetime import datetime, timezone
 
+
+def _resolve_db_path() -> str:
+    """Return DB_PATH, creating the parent directory when the process can."""
+    path = os.getenv("DB_PATH", "clearance.db")
+    parent = os.path.dirname(path)
+    if parent:
+        try:
+            os.makedirs(parent, exist_ok=True)
+        except OSError:
+            # Free hosts cannot attach a persistent disk. Callers still open
+            # the configured path so a bad location fails visibly.
+            pass
+    return path
+
 try:
     import aiosqlite  # type: ignore
 except ImportError:  # pragma: no cover - exercised when optional dependency is missing
     aiosqlite = None
 
 
-DB_PATH = os.getenv("DB_PATH", "clearance.db")
+DB_PATH = os.getenv("DB_PATH", "clearance.db")  # import-time snapshot; _connect reads the env again
 
 
 class _AsyncCursor:
@@ -57,9 +71,10 @@ def _utc_now() -> str:
 
 
 async def _connect():
+    path = _resolve_db_path()
     if aiosqlite:
-        return await aiosqlite.connect(DB_PATH)
-    return _AsyncConnection(sqlite3.connect(DB_PATH, check_same_thread=False))
+        return await aiosqlite.connect(path)
+    return _AsyncConnection(sqlite3.connect(path, check_same_thread=False))
 
 
 async def get_db():
@@ -406,6 +421,28 @@ async def init_db():
             metadata TEXT
         );
 
+        CREATE TABLE IF NOT EXISTS payment_quotes (
+            id TEXT PRIMARY KEY,
+            product TEXT NOT NULL,
+            service_id TEXT NOT NULL,
+            amount REAL NOT NULL,
+            recipient TEXT,
+            resource_url TEXT,
+            created_at TEXT NOT NULL,
+            expires_at TEXT,
+            consumed_tx TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS used_payment_txs (
+            tx_hash TEXT PRIMARY KEY,
+            service_id TEXT,
+            quote_id TEXT,
+            payer TEXT,
+            amount REAL,
+            product TEXT,
+            created_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS agent_income_runs (
             id TEXT PRIMARY KEY,
             target_amount REAL,
@@ -511,6 +548,9 @@ async def init_db():
         CREATE INDEX IF NOT EXISTS idx_visits_path ON visits(path);
         CREATE INDEX IF NOT EXISTS idx_traffic_events_ref ON traffic_events(ref);
         CREATE INDEX IF NOT EXISTS idx_traffic_events_created ON traffic_events(created_at);
+        CREATE INDEX IF NOT EXISTS idx_ledger_provider_ref ON agent_income_ledger(provider, provider_ref);
+        CREATE INDEX IF NOT EXISTS idx_payment_quotes_service ON payment_quotes(service_id);
+        CREATE INDEX IF NOT EXISTS idx_used_payment_txs_service ON used_payment_txs(service_id);
     """)
 
     await _ensure_column(db, "payments", "metadata", "metadata TEXT")
