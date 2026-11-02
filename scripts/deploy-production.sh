@@ -49,8 +49,8 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
 fi
 
 echo "Running tests..."
-python3 -m pytest -q
-python3 -m py_compile app.py database.py test_clearance.py crypto_verify.py models.py jwt_compat.py
+python3 -m unittest test_clearance.py
+python3 -m py_compile app.py database.py test_clearance.py crypto_verify.py models.py jwt_compat.py credit_service.py llm_help_service.py scam_analyzer.py sms_service.py
 
 echo "Deploying to Railway..."
 railway up --detach
@@ -76,8 +76,11 @@ if [[ "${latest_status:-}" != "SUCCESS" ]]; then
   exit 1
 fi
 
-echo "Verifying live site markers..."
-html="$(curl -L --max-time 20 -s https://clearance.nauti-labs.com)"
+PUBLIC_BASE_URL="${PUBLIC_BASE_URL:-${BASE_URL:-https://clearance.nauti-labs.com}}"
+PUBLIC_BASE_URL="${PUBLIC_BASE_URL%/}"
+
+echo "Verifying live site markers at $PUBLIC_BASE_URL ..."
+html="$(curl -L --max-time 20 -s "$PUBLIC_BASE_URL")"
 
 if grep -qi "glitch" <<<"$html"; then
   echo "ERROR: Live page still contains Glitch markers."

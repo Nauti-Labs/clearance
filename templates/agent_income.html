@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Agent Income</title>
+    <style>
+        body { margin: 0; font: 16px/1.5 system-ui, sans-serif; background: #101116; color: #f7f8fb; }
+        main { width: min(860px, calc(100% - 32px)); margin: 40px auto; }
+        a { color: #e8912d; }
+        pre { white-space: pre-wrap; background: #17191f; padding: 12px; }
+    </style>
+</head>
+<body>
+    <!-- TODO: the original Agent Income console was not in this checkout. -->
+    <main>
+        <h1>Agent Income</h1>
+        <p>Signed in as {{ viewer.display_name }}.</p>
+        <p>Review, audit, and blueprint offers are served from this host after payment verification.</p>
+        <p><a href="{{ base_url }}/agent-income/api/overview">Overview JSON</a></p>
+        <pre id="overview"></pre>
+    </main>
+    <script>
+        const seeded = {{ dashboard_json | safe }};
+        document.getElementById("overview").textContent = JSON.stringify(seeded, null, 2);
+    </script>
+</body>
+</html>

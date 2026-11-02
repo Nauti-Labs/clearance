@@ -3,13 +3,27 @@ import os
 import sqlite3
 from datetime import datetime, timezone
 
+
+def _resolve_db_path() -> str:
+    """Return DB_PATH, creating the parent directory when the process can."""
+    path = os.getenv("DB_PATH", "clearance.db")
+    parent = os.path.dirname(path)
+    if parent:
+        try:
+            os.makedirs(parent, exist_ok=True)
+        except OSError:
+            # Free hosts cannot attach a persistent disk. Callers still open
+            # the configured path so a bad location fails visibly.
+            pass
+    return path
+
 try:
     import aiosqlite  # type: ignore
 except ImportError:  # pragma: no cover - exercised when optional dependency is missing
     aiosqlite = None
 
 
-DB_PATH = os.getenv("DB_PATH", "clearance.db")
+DB_PATH = os.getenv("DB_PATH", "clearance.db")  # import-time snapshot; _connect reads the env again
 
 
 class _AsyncCursor:
@@ -57,9 +71,10 @@ def _utc_now() -> str:
 
 
 async def _connect():
+    path = _resolve_db_path()
     if aiosqlite:
-        return await aiosqlite.connect(DB_PATH)
-    return _AsyncConnection(sqlite3.connect(DB_PATH, check_same_thread=False))
+        return await aiosqlite.connect(path)
+    return _AsyncConnection(sqlite3.connect(path, check_same_thread=False))
 
 
 async def get_db():
@@ -76,26 +91,9 @@ async def _ensure_column(db, table_name: str, column_name: str, ddl: str):
 
 
 async def _seed_payees(db):
-    cursor = await db.execute("SELECT COUNT(*) FROM approved_payees")
-    count = (await cursor.fetchone())[0]
-    if count:
-        return
-
-    defaults = [
-        ("payee_capital_one", "Capital One", "credit_card"),
-        ("payee_credit_one", "Credit One Bank", "credit_card"),
-        ("payee_netflix", "Netflix", "subscription"),
-        ("payee_hulu", "Hulu", "subscription"),
-        ("payee_coinbase", "Coinbase", "investment"),
-    ]
-    now = _utc_now()
-    for payee_id, name, category in defaults:
-        await db.execute(
-            """INSERT INTO approved_payees
-               (id, name, category, method, risk_level, created_at, active)
-               VALUES (?, ?, ?, ?, ?, ?, 1)""",
-            (payee_id, name, category, "manual_review", "verified", now),
-        )
+    # TODO: do not ship a default allowlist. Operators add payees through the API.
+    del db
+    return
 
 
 async def init_db():
@@ -349,6 +347,193 @@ async def init_db():
             updated_at TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS traffic_events (
+            id TEXT PRIMARY KEY,
+            source TEXT,
+            method TEXT,
+            path TEXT,
+            query TEXT,
+            ref TEXT,
+            referer TEXT,
+            origin TEXT,
+            ip TEXT,
+            user_agent TEXT,
+            status_code INTEGER,
+            duration_ms REAL,
+            is_bot INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        );
+
+        -- TODO: these tables were missing from the checkout. Columns follow the
+        -- INSERT and UPDATE statements in app.py so the sold write paths can run.
+        CREATE TABLE IF NOT EXISTS ambassador_requests (
+            id TEXT PRIMARY KEY,
+            handle TEXT NOT NULL,
+            audience TEXT,
+            note TEXT,
+            source TEXT,
+            status TEXT,
+            ip TEXT,
+            user_agent TEXT,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS bot_comm_state (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS bot_comm_call_logs (
+            id TEXT PRIMARY KEY,
+            timestamp TEXT NOT NULL,
+            project TEXT,
+            service_id TEXT,
+            buyer_bot_id TEXT,
+            buyer_bot_source TEXT,
+            authorization_basis TEXT,
+            price_usd REAL,
+            payment_fee_usd REAL,
+            model_cost_usd REAL,
+            compute_cost_usd REAL,
+            external_api_cost_usd REAL,
+            net_profit_usd REAL,
+            latency_ms INTEGER,
+            clearance_policy_id TEXT,
+            result_code TEXT,
+            risk_flags TEXT,
+            repeat_buyer INTEGER,
+            provider_ref TEXT,
+            metadata TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS agent_income_ledger (
+            id TEXT PRIMARY KEY,
+            task_id TEXT,
+            run_id TEXT,
+            event_type TEXT,
+            amount REAL,
+            currency TEXT,
+            status TEXT,
+            provider TEXT,
+            provider_ref TEXT,
+            created_at TEXT NOT NULL,
+            metadata TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS payment_quotes (
+            id TEXT PRIMARY KEY,
+            product TEXT NOT NULL,
+            service_id TEXT NOT NULL,
+            amount REAL NOT NULL,
+            recipient TEXT,
+            resource_url TEXT,
+            created_at TEXT NOT NULL,
+            expires_at TEXT,
+            consumed_tx TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS used_payment_txs (
+            tx_hash TEXT PRIMARY KEY,
+            service_id TEXT,
+            quote_id TEXT,
+            payer TEXT,
+            amount REAL,
+            product TEXT,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS agent_income_runs (
+            id TEXT PRIMARY KEY,
+            target_amount REAL,
+            target_window_hours INTEGER,
+            projected_amount REAL,
+            status TEXT,
+            created_by TEXT,
+            created_at TEXT NOT NULL,
+            next_run_at TEXT,
+            metadata TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS agent_income_tasks (
+            id TEXT PRIMARY KEY,
+            run_id TEXT,
+            lane_key TEXT,
+            lane_label TEXT,
+            title TEXT,
+            buyer_profile TEXT,
+            expected_payout REAL,
+            cost_to_execute REAL,
+            currency TEXT,
+            status TEXT,
+            clearance_id TEXT,
+            deliverable TEXT,
+            delivery_channel TEXT,
+            risk_level TEXT,
+            automation_notes TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT,
+            metadata TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS agent_income_spend_authorizations (
+            id TEXT PRIMARY KEY,
+            owner TEXT,
+            amount_limit REAL,
+            spent_amount REAL,
+            currency TEXT,
+            protocol TEXT,
+            status TEXT,
+            clearance_id TEXT,
+            requested_by TEXT,
+            created_at TEXT NOT NULL,
+            expires_at TEXT,
+            metadata TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS agent_income_wallet_challenges (
+            nonce TEXT PRIMARY KEY,
+            owner TEXT,
+            address TEXT,
+            message TEXT,
+            expires_at TEXT,
+            used INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS agent_income_wallets (
+            id TEXT PRIMARY KEY,
+            owner TEXT NOT NULL UNIQUE,
+            address TEXT,
+            chain TEXT,
+            chain_id INTEGER,
+            ens TEXT,
+            verified INTEGER NOT NULL DEFAULT 0,
+            verification_method TEXT,
+            last_nonce TEXT,
+            last_signature TEXT,
+            connected_at TEXT,
+            updated_at TEXT,
+            metadata TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS agent_income_withdrawals (
+            id TEXT PRIMARY KEY,
+            owner TEXT,
+            wallet_address TEXT,
+            amount REAL,
+            currency TEXT,
+            chain TEXT,
+            chain_id INTEGER,
+            status TEXT,
+            clearance_id TEXT,
+            requested_by TEXT,
+            created_at TEXT NOT NULL,
+            metadata TEXT,
+            decided_at TEXT,
+            executed_tx_hash TEXT
+        );
+
         CREATE INDEX IF NOT EXISTS idx_clearances_api_key ON clearances(api_key_id);
         CREATE INDEX IF NOT EXISTS idx_clearances_status ON clearances(status);
         CREATE INDEX IF NOT EXISTS idx_audit_clearance ON audit_log(clearance_id);
@@ -361,6 +546,11 @@ async def init_db():
         CREATE INDEX IF NOT EXISTS idx_visits_ref ON visits(ref);
         CREATE INDEX IF NOT EXISTS idx_visits_created ON visits(created_at);
         CREATE INDEX IF NOT EXISTS idx_visits_path ON visits(path);
+        CREATE INDEX IF NOT EXISTS idx_traffic_events_ref ON traffic_events(ref);
+        CREATE INDEX IF NOT EXISTS idx_traffic_events_created ON traffic_events(created_at);
+        CREATE INDEX IF NOT EXISTS idx_ledger_provider_ref ON agent_income_ledger(provider, provider_ref);
+        CREATE INDEX IF NOT EXISTS idx_payment_quotes_service ON payment_quotes(service_id);
+        CREATE INDEX IF NOT EXISTS idx_used_payment_txs_service ON used_payment_txs(service_id);
     """)
 
     await _ensure_column(db, "payments", "metadata", "metadata TEXT")

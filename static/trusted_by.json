@@ -1,60 +1,19 @@
 {
-  "_comment": "Edit this file to update Nauti-Traffic trust signals. Avatars auto-pull from unavatar.io/x/<handle>. Trusted_by = real X handles in conversation/watching (no fake numbers shown — just an avatar strip). Onboarding = honest 'next batch' rows that show momentum without naming specific people prematurely. Captains get the gold ⚓ CAPTAIN badge in the leaderboard.",
-
-  "captain": "dipson_crypt",
-  "captains": ["dipson_crypt", "angela_dubois"],
-
-  "_first_mates_doc": "Up to 10 First Mate badges total. Tier below Captain. Add ref names lowercased.",
-  "first_mates": ["plemab", "x6r", "davidfx", "d0ny_g", "nft_queen", "6_yards", "david_on_chain", "harbeodun", "elimoni", "alex"],
-
-  "ref_aliases": {
-    "_doc": "mistyped ref → canonical public ref",
-    "plemeb": "plemab",
-    "david": "davidfx",
-    "angela": "angela_dubois",
-    "sungjinwoo70": "alex"
-  },
-
-  "hidden_refs": [
-    "telegram",
-    "telegram_nafson"
-  ],
-
-  "avatar_overrides": {
-    "_doc": "ref → real X handle when ref doesn't match the handle",
-    "melissa": "tripleK31",
-    "emmacrypto": "00Q__"
-  },
-
+  "_comment": "Fictional sample profiles for a fresh checkout. Replace with your own public refs. This file does not ship real account avatars.",
+  "captain": "harbor_captain",
+  "captains": ["harbor_captain", "cove_mate"],
+  "first_mates": ["river_hand", "pier_watch"],
+  "ref_aliases": {},
+  "hidden_refs": ["telegram"],
+  "avatar_overrides": {},
   "avatar_urls": {
-    "_doc": "ref → static avatar URL; used before X/unavatar lookup",
-    "x6r": "/static/avatars/x6r.png",
-    "plemab": "/static/avatars/plemab.png",
-    "plemeb": "/static/avatars/plemab.png",
-    "davidfx": "/static/avatars/davidfx.png",
-    "d0ny_g": "/static/avatars/d0ny_g.png",
-    "nft_queen": "/static/avatars/nft_queen.png",
-    "crypto_degen": "/static/avatars/crypto_degen.png",
-    "6_yards": "/static/avatars/6_yards.png",
-    "david_on_chain": "/static/avatars/david_on_chain.png",
-    "harbeodun": "/static/avatars/harbeodun.png",
-    "elimoni": "/static/avatars/elimoni.png",
-    "alex": "/static/avatars/alex.png",
-    "angela_dubois": "/static/avatars/angela_dubois.png",
-    "rook": "/static/avatars/rook.png",
-    "mikun": "/static/avatars/mikun.png"
+    "cove_mate": "/static/logos/stamp.svg",
+    "harbor_captain": "/static/logos/stamp.svg"
   },
-
   "trusted_by": [
-    { "handle": "Dipson_Crypt", "label": "@Dipson_Crypt" },
-    { "handle": "Nauti_Labs",   "label": "@Nauti_Labs" }
+    { "handle": "harbor_captain", "label": "@harbor_captain" }
   ],
-
   "onboarding": [
-    { "label": "Onboarding · target May 2",  "focus": "Crypto / AI" },
-    { "label": "Onboarding · target May 5",  "focus": "Trading bots" },
-    { "label": "Onboarding · target May 8",  "focus": "Builder devs" },
-    { "label": "Onboarding · target May 12", "focus": "Maritime / ops" },
-    { "label": "Onboarding · target May 15", "focus": "TBD" }
+    { "label": "Sample onboarding row", "focus": "Agent commerce" }
   ]
 }

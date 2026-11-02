@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional
 from enum import Enum
 from datetime import datetime
@@ -228,3 +228,91 @@ class ErrorResponse(BaseModel):
     error: str
     code: str
     detail: Optional[str] = None
+
+
+# Agent Income request bodies. Field set matches the handlers in app.py.
+# TODO: these models were missing from the checkout; extra fields are ignored
+# except on the bot-service envelope, which allows them.
+
+
+class AgentIncomeRunCreate(BaseModel):
+    target_amount: float = Field(..., gt=0)
+    target_window_hours: int = Field(..., ge=1, le=24 * 30)
+
+
+class AgentIncomeCampaignCreate(BaseModel):
+    limit: int = Field(10, ge=1, le=100)
+    expected_deposit: float = Field(..., ge=0)
+
+
+class AgentIncomeWalletNonceRequest(BaseModel):
+    address: str = Field(..., min_length=4, max_length=128)
+
+
+class AgentIncomeBotMarketCreate(BaseModel):
+    target_amount: float = Field(..., gt=0)
+    target_window_hours: int = Field(..., ge=1, le=24 * 30)
+    target_calls_per_service: int = Field(..., ge=1, le=10000)
+
+
+class AgentIncomeBotServiceRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    input: Optional[dict] = None
+    payment_tx: Optional[str] = None
+    payer_agent: Optional[str] = None
+    request_id: Optional[str] = None
+    clearance_token: Optional[str] = None
+    quote_id: Optional[str] = None
+
+
+class AgentIncomeTaskExecution(BaseModel):
+    channel: str = Field(..., max_length=40)
+    note: Optional[str] = Field(None, max_length=500)
+
+
+class AgentIncomeWalletConnect(BaseModel):
+    address: str = Field(..., min_length=4, max_length=128)
+    chain_id: int
+    nonce: str = Field(..., max_length=256)
+    message: str = Field(..., max_length=4000)
+    signature: str = Field(..., max_length=256)
+
+
+class AgentIncomePaymentCreate(BaseModel):
+    provider: str = Field(..., max_length=40)
+    provider_ref: str = Field(..., max_length=200)
+    amount: float = Field(..., gt=0)
+    currency: str = Field("USD", max_length=10)
+    note: Optional[str] = Field(None, max_length=500)
+
+
+class AgentIncomePublicPaymentClaim(BaseModel):
+    provider_ref: str = Field(..., max_length=200)
+    payer_email: Optional[str] = Field(None, max_length=200)
+    note: Optional[str] = Field(None, max_length=500)
+
+
+class AgentIncomeSpendAuthorizationCreate(BaseModel):
+    protocol: str = Field(..., max_length=40)
+    amount_limit: float = Field(..., gt=0)
+    currency: str = Field("USD", max_length=10)
+    purpose: str = Field(..., max_length=300)
+    service_url: Optional[str] = Field(None, max_length=500)
+
+
+class AgentIncomeSpendUsageCreate(BaseModel):
+    amount: float = Field(..., gt=0)
+    provider_ref: str = Field(..., max_length=200)
+    service_url: Optional[str] = Field(None, max_length=500)
+    note: Optional[str] = Field(None, max_length=500)
+
+
+class AgentIncomeWithdrawalCreate(BaseModel):
+    amount: float = Field(..., gt=0)
+    currency: str = Field("USD", max_length=10)
+    note: Optional[str] = Field(None, max_length=500)
+
+
+class AgentIncomeWithdrawalExecution(BaseModel):
+    tx_hash: str = Field(..., max_length=80)
