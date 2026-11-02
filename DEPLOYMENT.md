@@ -46,8 +46,8 @@ Payment identity, also from stdin:
 ```bash
 printf '%s' 'sk_live_...' | railway variable set STRIPE_SECRET_KEY --stdin --skip-deploys
 printf '%s' 'whsec_...' | railway variable set STRIPE_WEBHOOK_SECRET --stdin --skip-deploys
-printf '%s' '0x...' | railway variable set PAYMENT_WALLET --stdin --skip-deploys
-printf '%s' 'yourname.base.eth' | railway variable set PAYMENT_ENS --stdin --skip-deploys
+printf '%s' '0xaC73A1dC4FEc75b61478Fb34186C6a379EA01CC2' | railway variable set PAYMENT_WALLET --stdin --skip-deploys
+# PAYMENT_ENS is optional. Set it only if you publish an ENS name.
 printf '%s' '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' | railway variable set USDC_CONTRACT --stdin --skip-deploys
 ```
 
@@ -63,7 +63,32 @@ railway variable set \
   --skip-deploys
 ```
 
-Production also requires `PAYMENT_WALLET`, `PAYMENT_ENS`, and `USDC_CONTRACT` when `BASE_URL` is not a localhost URL.
+Production also requires `PAYMENT_WALLET` and `USDC_CONTRACT` when `BASE_URL` is not a localhost URL. `PAYMENT_ENS` is optional.
+
+`PUBLIC_BASE_URL` is the origin used in 402 resource URLs and in `/.well-known/x402.json`, `/.well-known/x402-services.json`, `/x402/discovery`, and `/bot-comm/.well-known/x402.json`. It falls back to `BASE_URL`. In production those resource URLs are https. Set it to the same public origin you put in `BASE_URL`, for example `https://clearance.nauti-labs.com`.
+
+Example USDC-on-Base receiving wallet: `0xaC73A1dC4FEc75b61478Fb34186C6a379EA01CC2`. Native USDC contract on Base: `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`.
+
+## x402 payments
+
+Paid Agent Income and Bot-Comm calls accept either of these:
+
+- A standard x402 v2 `exact` payment in the `PAYMENT-SIGNATURE` header. The legacy `X-PAYMENT` header is also accepted. Clearance verifies and settles it through `X402_FACILITATOR_URL` (default `https://api.cdp.coinbase.com/platform/v2/x402`) using `CDP_API_KEY_ID` and `CDP_API_KEY_SECRET`. The facilitator request includes `paymentPayload.resource` and `extensions.bazaar`. If those CDP variables are unset, this path returns HTTP 402 with an explanation.
+- A direct Base USDC transfer. The caller first receives a `quote_id`. The retry sends `X-Payment-Tx` or `payment_tx` with that `quote_id`. The transfer must be newer than the quote, paid to the configured wallet, and at least the quoted amount. A transaction hash that was already used returns HTTP 409.
+
+`GET /bot-comm/api/services/{id}?x402=1` with `Accept: application/json` returns 402 and a `PAYMENT-REQUIRED` header so a registry can probe the service without a body.
+
+`GET /v1/revenue/payments` lists paid calls (time, service id, amount, tx hash, payer) and 24h, 7d, and all-time totals by service. Send `BOT_COMM_PASSWORD` or `ADMIN_TOKEN` as `Authorization: Bearer` or `X-Admin-Token`.
+
+`TEST_PRICE_USD` (for example `0.05`) turns on one hidden endpoint, `POST /agent-income/test-ping`, priced at that amount. It is omitted from discovery. Leave the variable unset and the route is 404.
+
+`AGENT_INCOME_OPERATOR_ENABLED`, `AGENT_INCOME_PUBLIC_LEAD_DISCOVERY_ENABLED`, and `AGENT_INCOME_AUTO_DEAL_LEADS` default to false. Set them to `true` only when outreach should run.
+
+## Render
+
+`render.yaml` defines one free Python web service. It does not create a paid database or disk. SQLite on the free plan is lost on restart. A persistent disk requires a paid plan; mount it at `/var/data` and set `DB_PATH=/var/data/clearance.db`. The free blueprint uses `DB_PATH=clearance.db`.
+
+Fill `JWT_SECRET_KEY`, `BOT_COMM_PASSWORD`, and `PAYMENT_WALLET` in the Dashboard when the Blueprint asks (`sync: false`). Also set `BASE_URL` and `PUBLIC_BASE_URL` to the service's https origin, and set `CDP_API_KEY_ID` plus `CDP_API_KEY_SECRET` if standard x402 settlement should be live. The process listens on `0.0.0.0` and `PORT`. The health check path is `/health`.
 
 ## Domain
 
