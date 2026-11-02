@@ -7075,6 +7075,47 @@ def _agent_income_offer_economics(offer: dict) -> dict:
     }
 
 
+# Operator rate targets stay on the signed-in dashboard. Buyers never see them.
+_AGENT_INCOME_BUYER_HIDDEN_KEYS = frozenset({
+    "effective_hourly_rate_usd",
+    "goal_effective_hourly_rate_usd",
+    "premium_effective_hourly_rate_usd",
+    "preferred_effective_hourly_rate_usd",
+    "minimum_effective_hourly_rate_usd",
+    "min_effective_hourly_rate_usd",
+    "meets_goal_hourly_rate",
+    "meets_premium_hourly_rate",
+    "meets_preferred_hourly_rate",
+    "meets_minimum_hourly_rate",
+    "meets_200_hour_goal",
+    "rate_tier",
+    "rate_tier_label",
+    "eligible_under_rate_policy",
+    "revenue_score",
+    "fully_automated_required_for_baseline",
+    "fully_automated_low_value",
+    "daily_revenue_target_usd",
+    "dailyRevenueTargetUsd",
+    "target_window_hours",
+    "targetWindowHours",
+    "hourlyTarget",
+    "hourly_target",
+    "ratePolicy",
+    "rate_policy",
+    "clearancePolicy",
+    "clearance_policy",
+    "goalEffectiveHourlyRateUsd",
+    "premiumEffectiveHourlyRateUsd",
+    "preferredEffectiveHourlyRateUsd",
+    "minimumEffectiveHourlyRateUsd",
+})
+
+
+def _agent_income_buyer_view(payload: dict) -> dict:
+    """Drop operator hourly targets and rate-policy fields from a buyer payload."""
+    return {key: value for key, value in payload.items() if key not in _AGENT_INCOME_BUYER_HIDDEN_KEYS}
+
+
 def _agent_income_extract_paid_input(payload: dict) -> dict:
     if isinstance(payload.get("input"), dict):
         return dict(payload.get("input") or {})
@@ -7774,7 +7815,7 @@ async def _run_agent_income_paid_offer(
                 "currency": "USDC",
                 "network": f"eip155:{PAYMENT_CHAIN_ID}",
             },
-            "economics": economics,
+            "economics": _agent_income_buyer_view(economics),
         },
     )
 
@@ -12770,10 +12811,8 @@ async def agent_income_operator_send_lead_action(action_id: str, _: dict = Depen
 @app.get("/agent-income/agents.json", tags=["Agent Income"])
 async def agent_income_agent_manifest():
     recipient = _agent_income_public_recipient()
-    hourly_total = money(sum(float(offer["price_usdc"]) for offer in AGENT_INCOME_PAID_OFFERS))
     paid_offers = []
     for offer in AGENT_INCOME_PAID_OFFERS:
-        economics = _agent_income_offer_economics(offer)
         paid_offers.append({
             "id": offer["key"],
             "name": offer["label"],
@@ -12786,18 +12825,6 @@ async def agent_income_agent_manifest():
             "input_schema": offer["input_schema"],
             "output_schema": offer["output_schema"],
             "max_work_seconds": offer["max_work_seconds"],
-            "effective_hourly_rate_usd": economics["effective_hourly_rate_usd"],
-            "goal_effective_hourly_rate_usd": economics["goal_effective_hourly_rate_usd"],
-            "premium_effective_hourly_rate_usd": economics["premium_effective_hourly_rate_usd"],
-            "preferred_effective_hourly_rate_usd": economics["preferred_effective_hourly_rate_usd"],
-            "minimum_effective_hourly_rate_usd": economics["minimum_effective_hourly_rate_usd"],
-            "meets_goal_hourly_rate": economics["meets_goal_hourly_rate"],
-            "meets_premium_hourly_rate": economics["meets_premium_hourly_rate"],
-            "meets_preferred_hourly_rate": economics["meets_preferred_hourly_rate"],
-            "meets_minimum_hourly_rate": economics["meets_minimum_hourly_rate"],
-            "rate_tier": economics["rate_tier"],
-            "rate_tier_label": economics["rate_tier_label"],
-            "eligible_under_rate_policy": economics["eligible_under_rate_policy"],
             "delivery_terms": offer["delivery_terms"],
             "refund_terms": offer["refund_terms"],
         })
@@ -12831,21 +12858,6 @@ async def agent_income_agent_manifest():
             "clearance_required": True,
             "input_schema": AGENT_INCOME_CUSTOM_QUOTE_SCHEMA,
         },
-        "ratePolicy": {
-            "goalEffectiveHourlyRateUsd": AGENT_INCOME_GOAL_EFFECTIVE_RATE_USD,
-            "premiumEffectiveHourlyRateUsd": AGENT_INCOME_GOAL_EFFECTIVE_RATE_USD,
-            "preferredEffectiveHourlyRateUsd": AGENT_INCOME_PREFERRED_EFFECTIVE_RATE_USD,
-            "minimumEffectiveHourlyRateUsd": AGENT_INCOME_MIN_EFFECTIVE_RATE_USD,
-            "dailyRevenueTargetUsd": AGENT_INCOME_TARGET_AMOUNT,
-            "targetWindowHours": AGENT_INCOME_TARGET_WINDOW_HOURS,
-            "rule": "Prioritize $200/hour premium work, prefer $50/hour good work, and accept safe fully automated $10/hour baseline work when payment or escrow is confirmed first.",
-            "clearancePolicy": AGENT_INCOME_AUTONOMOUS_LOW_VALUE_JOB_POLICY,
-        },
-        "hourlyTarget": {
-            "amount": hourly_total,
-            "currency": "USDC",
-            "model": "one paid call to each listed service per hour",
-        },
         "network": f"eip155:{PAYMENT_CHAIN_ID}",
         "chain": PAYMENT_CHAIN,
         "asset": USDC_CONTRACT,
@@ -12868,7 +12880,6 @@ async def agent_income_well_known_manifest():
 @app.get("/agent-income/agents", response_class=HTMLResponse, tags=["Agent Income"])
 async def agent_income_agent_market_page():
     manifest = await agent_income_agent_manifest()
-    hourly_total = manifest["hourlyTarget"]["amount"]
     wallet = html.escape(manifest.get("payTo") or "not configured")
     asset = html.escape(manifest.get("asset") or "not configured")
     displayed_services = manifest.get("defaultPaidOffers") or manifest["services"]
@@ -12939,8 +12950,8 @@ async def agent_income_agent_market_page():
       </div>
     </header>
     <section class="metrics">
-      <div class="metric"><label>Hourly Target</label><strong>${hourly_total:.2f}</strong></div>
-      <div class="metric"><label>Model</label><strong>{service_count} calls/hr</strong></div>
+      <div class="metric"><label>Services</label><strong>{service_count}</strong></div>
+      <div class="metric"><label>Payment</label><strong>Per call</strong></div>
       <div class="metric"><label>Network</label><strong>Base</strong></div>
       <div class="metric"><label>Settlement</label><strong>USDC</strong></div>
     </section>
@@ -13026,7 +13037,6 @@ def _agent_income_paid_offer_html(offer: dict) -> str:
             "notes": "We want to sell a paid AI agent/API service using HTTP 402 and USDC.",
         }
     sample_body = json.dumps(sample_payload, indent=2)
-    economics = _agent_income_offer_economics(offer)
     return f"""
 <!doctype html>
 <html lang="en">
@@ -13067,7 +13077,7 @@ def _agent_income_paid_offer_html(offer: dict) -> str:
       <a href="/agent-income/agents.json">Machine manifest</a>
     </div>
     <section class="panel">
-      <span class="badge">${float(offer["price_usdc"]):.2f} USDC · ${economics["effective_hourly_rate_usd"]:.2f}/hr net · {html.escape(economics["rate_tier_label"])}</span>
+      <span class="badge">${float(offer["price_usdc"]):.2f} USDC</span>
       <div><strong>POST endpoint</strong></div>
       <code>{html.escape(endpoint)}</code>
       <p>Unpaid calls return HTTP 402 with price, schemas, delivery terms, refund terms, and Base USDC payment requirements. Premium output is released only after payment verification.</p>
@@ -13287,10 +13297,6 @@ async def agent_income_custom_quote(request: Request):
             "clearance_required": True,
             "payment_required_before_work": True,
             "minimum_price_usd": 1500,
-            "goal_effective_hourly_rate_usd": AGENT_INCOME_GOAL_EFFECTIVE_RATE_USD,
-            "premium_effective_hourly_rate_usd": AGENT_INCOME_GOAL_EFFECTIVE_RATE_USD,
-            "preferred_effective_hourly_rate_usd": AGENT_INCOME_PREFERRED_EFFECTIVE_RATE_USD,
-            "minimum_effective_hourly_rate_usd": AGENT_INCOME_MIN_EFFECTIVE_RATE_USD,
             "input_schema": AGENT_INCOME_CUSTOM_QUOTE_SCHEMA,
             "received_scope_summary": scope,
             "next_action": (
