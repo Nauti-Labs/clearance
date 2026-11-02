@@ -895,6 +895,190 @@ class ClearanceSmokeTests(unittest.TestCase):
         self.assertTrue(probe.json()["payment"]["accepts"][0]["facilitator"])
         self.assertEqual(ignored.status_code, 200)
 
+    def test_public_buyer_surfaces_hide_internal_rate_targets(self):
+        forbidden = (
+            "hourlytarget",
+            "hourly target",
+            "ratepolicy",
+            "rate_policy",
+            "effective_hourly_rate",
+            "effectivehourlyrate",
+            "goal_effective_hourly_rate",
+            "goaleffectivehourlyrate",
+            "premium_effective_hourly_rate",
+            "premiumeffectivehourlyrate",
+            "preferred_effective_hourly_rate",
+            "preferredeffectivehourlyrate",
+            "minimum_effective_hourly_rate",
+            "minimumeffectivehourlyrate",
+            "meets_goal_hourly_rate",
+            "meets_premium_hourly_rate",
+            "meets_preferred_hourly_rate",
+            "meets_minimum_hourly_rate",
+            "meets_200_hour_goal",
+            "dailyrevenuetarget",
+            "daily_revenue_target",
+            "clearancepolicy",
+            "calls/hr",
+            "one paid call to each listed service per hour",
+            "/hr net",
+            "rate_tier",
+            "eligible_under_rate_policy",
+        )
+        offer_pages = (
+            "/agent-income/audit",
+            "/agent-income/review",
+            "/agent-income/blueprint",
+            "/agent-income/anchor-compliance",
+        )
+        discovery_pages = (
+            "/agent-income/agents",
+            "/agent-income/agents.json",
+            "/agent-income/.well-known/agent.json",
+            "/agent-income/custom-quote",
+            "/agent-income/api/bot-services",
+            "/bot-comm/market",
+            "/bot-comm/agents.json",
+            "/bot-comm/.well-known/agent.json",
+            "/bot-comm/.well-known/x402.json",
+            "/bot-comm/.well-known/x402-services.json",
+            "/.well-known/x402.json",
+            "/.well-known/x402-services.json",
+            "/x402/discovery",
+            "/.well-known/agent-card.json",
+            "/.well-known/agent.json",
+            "/bot-comm/openapi.json",
+            "/bot-comm/api/services",
+            "/bot-comm/health",
+            "/llms.txt",
+            "/llms-full.txt",
+            "/openapi.json",
+            "/robots.txt",
+            "/sitemap.xml",
+        )
+
+        def assert_buyer_safe(label, text):
+            folded = text.lower()
+            for needle in forbidden:
+                self.assertNotIn(needle, folded, f"{label} still exposes {needle}")
+
+        tx_hash = "0x" + "cd" * 32
+
+        async def fake_verify(tx, amount, recipient=None, not_before=None):
+            return {
+                "verified": True,
+                "error": None,
+                "amount_usdc": amount,
+                "confirmations": 20,
+                "from_address": "0x" + "44" * 20,
+                "block_number": 12,
+                "block_timestamp": int(datetime.now(timezone.utc).timestamp()),
+            }
+
+        with TestClient(self.app_module.app) as client:
+            for path in discovery_pages:
+                response = client.get(path)
+                self.assertEqual(response.status_code, 200, path)
+                assert_buyer_safe(path, response.text)
+
+            catalog = client.get("/agent-income/api/bot-services")
+            for service in catalog.json()["services"]:
+                page = client.get(f"/agent-income/api/bot-services/{service['id']}")
+                self.assertEqual(page.status_code, 200, service["id"])
+                assert_buyer_safe(service["endpoint"], page.text)
+
+            for path in offer_pages:
+                html_page = client.get(path, headers={"Accept": "text/html"})
+                self.assertEqual(html_page.status_code, 200, path)
+                self.assertIn("USDC", html_page.text)
+                assert_buyer_safe(path, html_page.text)
+                unpaid = client.post(path, json={"project_url": "https://example.com"}, headers={"Accept": "application/json"})
+                self.assertEqual(unpaid.status_code, 402, path)
+                assert_buyer_safe(f"{path} 402", unpaid.text)
+                self.assertIn("payTo", unpaid.text)
+                self.assertIn("input_schema", unpaid.text)
+
+            quote = client.post("/agent-income/custom-quote", json={"scope_summary": "Paid agent checkout"})
+            self.assertEqual(quote.status_code, 202)
+            assert_buyer_safe("custom-quote", quote.text)
+            self.assertEqual(quote.json()["minimum_price_usd"], 1500)
+            self.assertNotIn("goal_effective_hourly_rate_usd", quote.json())
+
+            manifest = client.get("/agent-income/agents.json").json()
+            well_known = client.get("/agent-income/.well-known/agent.json").json()
+            self.assertEqual(manifest, well_known)
+            self.assertNotIn("hourlyTarget", manifest)
+            self.assertNotIn("ratePolicy", manifest)
+            prices = {offer["id"]: offer["price_usd"] for offer in manifest["defaultPaidOffers"]}
+            self.assertEqual(prices["readiness_audit"], 49.0)
+            self.assertEqual(prices["payment_flow_review"], 199.0)
+            self.assertEqual(prices["integration_blueprint"], 499.0)
+            self.assertEqual(prices["anchor_compliance_readiness"], 499.0)
+            audit = next(offer for offer in manifest["defaultPaidOffers"] if offer["id"] == "readiness_audit")
+            self.assertIn("/agent-income/audit", audit["endpoint"])
+            self.assertIn("project_url", audit["input_schema"]["properties"])
+            self.assertIn("description", audit)
+            self.assertEqual(manifest["payTo"], os.environ["PAYMENT_WALLET"].lower())
+            self.assertEqual(manifest["asset"], os.environ["USDC_CONTRACT"])
+            self.assertTrue(str(manifest["network"]).startswith("eip155:"))
+            self.assertIn("x402", json.dumps(manifest["payment"]).lower())
+
+            market = client.get("/agent-income/agents")
+            self.assertIn("Instant Agent Payment Readiness Score", market.text)
+            self.assertIn("$49.00", market.text)
+            self.assertIn(os.environ["PAYMENT_WALLET"].lower(), market.text.lower())
+            self.assertNotIn("Hourly Target", market.text)
+            self.assertNotIn("calls/hr", market.text)
+
+            x402 = client.get("/.well-known/x402.json").json()
+            self.assertEqual(x402["payTo"], os.environ["PAYMENT_WALLET"].lower())
+            self.assertTrue(x402["services"])
+            self.assertIn("price", x402["services"][0])
+            self.assertIn("endpoint", x402["services"][0])
+
+            discovery = client.get("/x402/discovery").json()
+            self.assertEqual(discovery["asset"], os.environ["USDC_CONTRACT"])
+
+            locked = client.get("/agent-income/api/overview")
+            self.assertEqual(locked.status_code, 401)
+            assert_buyer_safe("locked overview", locked.text)
+
+            with patch.object(self.app_module, "verify_usdc_payment", fake_verify):
+                unpaid = client.post(
+                    "/agent-income/audit",
+                    json={"project_url": "https://example.com"},
+                    headers={"Accept": "application/json"},
+                )
+                paid = client.post(
+                    "/agent-income/audit",
+                    json={
+                        "project_url": "https://example.com",
+                        "payment_tx": tx_hash,
+                        "quote_id": unpaid.json()["quote_id"],
+                    },
+                    headers={"Accept": "application/json"},
+                )
+            self.assertEqual(paid.status_code, 200, paid.text)
+            assert_buyer_safe("paid audit", paid.text)
+            self.assertEqual(paid.json()["service"]["price_usd"], 49.0)
+            self.assertNotIn("effective_hourly_rate_usd", paid.json().get("economics") or {})
+
+            self.login_family(client)
+            overview = client.get("/agent-income/api/overview")
+            self.assertEqual(overview.status_code, 200)
+            operator = overview.json()
+            self.assertIn("rate_policy", operator)
+            self.assertIn("goal_effective_hourly_rate_usd", operator["rate_policy"])
+            self.assertIn("daily_revenue_target_usd", operator["rate_policy"])
+            self.assertIn("effective_hourly_rate_usd", operator["paid_offers"][0])
+            self.assertIn("meets_premium_hourly_rate", operator["paid_offers"][0])
+            dashboard = client.get("/agent-income")
+            self.assertEqual(dashboard.status_code, 200)
+            self.assertIn("effective_hourly_rate_usd", dashboard.text)
+            status = client.get("/agent-income/api/operator/status")
+            self.assertEqual(status.status_code, 200)
+            self.assertIn("goal_effective_hourly_rate_usd", status.json())
+
 
 class UsdcVerificationTests(unittest.TestCase):
     def setUp(self):
